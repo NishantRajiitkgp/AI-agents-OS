@@ -37,20 +37,33 @@ jobs:
           rustc --version
           cargo --version
 
+      # These four run independently of each other. A step that stops the steps below it does
+      # not report less, it reports later — and on the run where formatting failed, "does the
+      # binary compile at all" went unanswered for three pushes. Each still fails the job;
+      # none of them now decides whether the others get to speak. The same masking hid a
+      # corrupted file behind a ratchet
+      # (aios/incidents/2026-08-02-the-mojibake-gate-did-not-read-scripts.md).
+      #
+      # The behaviour checks below deliberately keep the default and skip, because they run
+      # the binary: with no binary, their failure describes the build failure a second time.
       - name: Formatting
+        if: ${{ !cancelled() }}
         run: cargo fmt --check
 
       # Warnings are denied rather than reported. A warning nobody must act on is a warning
       # everybody learns to scroll past.
       - name: Lints
+        if: ${{ !cancelled() }}
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Build
+        if: ${{ !cancelled() }}
         run: cargo build --release
 
       # Dev profile deliberately: the release profile sets panic = "abort", which the test
       # harness cannot link against.
       - name: Unit tests
+        if: ${{ !cancelled() }}
         run: cargo test
 
       - name: "Behaviour: exit codes are what the callers depend on"
