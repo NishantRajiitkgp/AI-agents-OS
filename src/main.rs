@@ -30,17 +30,41 @@ struct Subcommand {
 }
 
 const SUBCOMMANDS: &[Subcommand] = &[
-    Subcommand { name: "new", summary: "scaffold a task or requirement and allocate its ID" },
-    Subcommand { name: "next", summary: "select the next task deterministically" },
-    Subcommand { name: "start", summary: "move a task to doing" },
-    Subcommand { name: "submit", summary: "move a task to review" },
-    Subcommand { name: "done", summary: "run every verify command, then write the record" },
-    Subcommand { name: "list", summary: "query tasks by state" },
-    Subcommand { name: "check", summary: "run locally exactly what CI runs" },
+    Subcommand {
+        name: "new",
+        summary: "scaffold a task or requirement and allocate its ID",
+    },
+    Subcommand {
+        name: "next",
+        summary: "select the next task deterministically",
+    },
+    Subcommand {
+        name: "start",
+        summary: "move a task to doing",
+    },
+    Subcommand {
+        name: "submit",
+        summary: "move a task to review",
+    },
+    Subcommand {
+        name: "done",
+        summary: "run every verify command, then write the record",
+    },
+    Subcommand {
+        name: "list",
+        summary: "query tasks by state",
+    },
+    Subcommand {
+        name: "check",
+        summary: "run locally exactly what CI runs",
+    },
 ];
 
 fn print_help() {
-    println!("aios {} — reads and checks project state", env!("CARGO_PKG_VERSION"));
+    println!(
+        "aios {} — reads and checks project state",
+        env!("CARGO_PKG_VERSION")
+    );
     println!();
     println!("Usage: aios <subcommand> [options]");
     println!();
@@ -151,7 +175,10 @@ fn run() -> u8 {
         "list" => commands::list(&root, args.first().map(String::as_str)),
         "check" => {
             let list_only = take_flag(&mut args, "--list");
-            let workflow = args.first().cloned().unwrap_or_else(|| "hygiene.yml".to_string());
+            let workflow = args
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "hygiene.yml".to_string());
             commands::check(&root, &workflow, list_only)
         }
         _ => unreachable!("membership was checked above"),
@@ -189,7 +216,11 @@ mod tests {
 
     #[test]
     fn root_is_taken_with_its_value() {
-        let mut args = vec!["next".to_string(), "--root".to_string(), "/tmp/x".to_string()];
+        let mut args = vec![
+            "next".to_string(),
+            "--root".to_string(),
+            "/tmp/x".to_string(),
+        ];
         assert_eq!(take_root(&mut args), Some("/tmp/x".to_string()));
         assert_eq!(args, vec!["next".to_string()]);
     }
@@ -198,7 +229,11 @@ mod tests {
     fn a_root_flag_with_no_value_is_not_silently_consumed() {
         let mut args = vec!["next".to_string(), "--root".to_string()];
         assert_eq!(take_root(&mut args), None);
-        assert_eq!(args.len(), 2, "leaving it alone lets the caller report the usage error");
+        assert_eq!(
+            args.len(),
+            2,
+            "leaving it alone lets the caller report the usage error"
+        );
     }
 
     #[test]

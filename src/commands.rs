@@ -28,9 +28,15 @@ pub const COULD_NOT_RUN: u8 = 2;
 /// on a protected path rather than something the agent supplies at the point of use.
 fn shell(root: &Path, command: &str) -> Reading<(i32, String)> {
     let output = if cfg!(windows) {
-        Command::new("cmd").args(["/C", command]).current_dir(root).output()
+        Command::new("cmd")
+            .args(["/C", command])
+            .current_dir(root)
+            .output()
     } else {
-        Command::new("sh").args(["-c", command]).current_dir(root).output()
+        Command::new("sh")
+            .args(["-c", command])
+            .current_dir(root)
+            .output()
     };
     let output = output.map_err(|e| CouldNotRun(format!("could not run {command:?}: {e}")))?;
     let mut text = String::from_utf8_lossy(&output.stdout).to_string();
@@ -200,13 +206,21 @@ pub fn next(root: &Path, json: bool) -> Reading<u8> {
     };
 
     if json {
-        println!("{{\"id\": \"{}\", \"title\": \"{}\", \"path\": \"{}\"}}",
-            escape(&task.id), escape(&task.title), escape(&task.path.display().to_string()));
+        println!(
+            "{{\"id\": \"{}\", \"title\": \"{}\", \"path\": \"{}\"}}",
+            escape(&task.id),
+            escape(&task.title),
+            escape(&task.path.display().to_string())
+        );
     } else {
         println!("{}  {}", task.id, task.title);
         println!();
-        println!("  priority {}   risk {}   unblocks {}",
-            task.priority, task.risk.name(), unblocks(task, &tasks));
+        println!(
+            "  priority {}   risk {}   unblocks {}",
+            task.priority,
+            task.risk.name(),
+            unblocks(task, &tasks)
+        );
         if !task.touches.is_empty() {
             println!("  touches  {}", task.touches.join(", "));
         }
@@ -230,8 +244,13 @@ fn report_why_nothing_is_ready(tasks: &[Task]) {
     }
     if todo.is_empty() {
         let mut counts: Vec<(Status, usize)> = Vec::new();
-        for status in [Status::Doing, Status::Review, Status::Waiting, Status::Done,
-                       Status::Dropped] {
+        for status in [
+            Status::Doing,
+            Status::Review,
+            Status::Waiting,
+            Status::Done,
+            Status::Dropped,
+        ] {
             let count = tasks.iter().filter(|t| t.status == status).count();
             if count > 0 {
                 counts.push((status, count));
@@ -243,8 +262,10 @@ fn report_why_nothing_is_ready(tasks: &[Task]) {
             .collect();
         println!("Nothing is todo. The backlog is {}.", summary.join(", "));
         println!();
-        println!("Nothing is waiting on the selector — the next move is on whatever is in \
-                  review, or on writing a new task.");
+        println!(
+            "Nothing is waiting on the selector — the next move is on whatever is in \
+                  review, or on writing a new task."
+        );
         return;
     }
 
@@ -334,8 +355,10 @@ fn transition_refusal(task: &Task, to: Status) -> Option<String> {
             "A dropped task stays dropped, with its reason. Write a new one if the work is \
              wanted again; the record of having decided against it is worth keeping."
         }
-        _ => "The states are todo, doing, review, done, waiting and dropped, and the only \
-              paths between them are the ones in `aios help`.",
+        _ => {
+            "The states are todo, doing, review, done, waiting and dropped, and the only \
+              paths between them are the ones in `aios help`."
+        }
     };
     Some(format!(
         "{} is {} and cannot move to {}.\n\n  {advice}",
@@ -371,7 +394,10 @@ fn move_to(root: &Path, id: &str, to: Status) -> Reading<u8> {
                 "{} is blocked by {} task(s) that are not done or dropped: {}",
                 task.id,
                 open.len(),
-                open.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+                open.iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
             eprintln!();
             eprintln!(
@@ -430,13 +456,20 @@ pub fn done(root: &Path, id: &str) -> Reading<u8> {
         return Ok(FAILED);
     }
     if task.verify.is_empty() {
-        eprintln!("{} declares no verify commands. There is nothing to establish.", task.id);
+        eprintln!(
+            "{} declares no verify commands. There is nothing to establish.",
+            task.id
+        );
         return Ok(FAILED);
     }
 
     let sha = state::head_sha(root)?;
-    println!("{}: running {} verify command(s) at {}", task.id, task.verify.len(),
-             &sha[..sha.len().min(8)]);
+    println!(
+        "{}: running {} verify command(s) at {}",
+        task.id,
+        task.verify.len(),
+        &sha[..sha.len().min(8)]
+    );
     println!();
 
     let mut results: Vec<(String, i32)> = Vec::new();
@@ -446,7 +479,14 @@ pub fn done(root: &Path, id: &str) -> Reading<u8> {
         println!("  [{}] {command}", if code == 0 { "ok" } else { "FAILED" });
         if code != 0 {
             failed = true;
-            for line in output.lines().rev().take(20).collect::<Vec<_>>().iter().rev() {
+            for line in output
+                .lines()
+                .rev()
+                .take(20)
+                .collect::<Vec<_>>()
+                .iter()
+                .rev()
+            {
                 println!("      {line}");
             }
         }
@@ -482,15 +522,26 @@ pub fn done(root: &Path, id: &str) -> Reading<u8> {
     let text = state::read_to_string(&task.path)?;
     let without_old = strip_field(&text, "verified");
     let with_record = state::add_frontmatter_field(&without_old, &record).ok_or_else(|| {
-        CouldNotRun(format!("{}: frontmatter has no closing marker", task.path.display()))
+        CouldNotRun(format!(
+            "{}: frontmatter has no closing marker",
+            task.path.display()
+        ))
     })?;
-    let updated = state::set_frontmatter_field(&with_record, "status", "done").ok_or_else(
-        || CouldNotRun(format!("{}: no `status:` line to rewrite", task.path.display())),
-    )?;
+    let updated =
+        state::set_frontmatter_field(&with_record, "status", "done").ok_or_else(|| {
+            CouldNotRun(format!(
+                "{}: no `status:` line to rewrite",
+                task.path.display()
+            ))
+        })?;
     state::write(&task.path, &updated)?;
 
     println!();
-    println!("{}: review → done, recorded at {}", task.id, &sha[..sha.len().min(8)]);
+    println!(
+        "{}: review → done, recorded at {}",
+        task.id,
+        &sha[..sha.len().min(8)]
+    );
     println!(
         "CI re-runs these commands at that commit and will disagree if the record does not \
          hold (M1-15)."
@@ -558,7 +609,10 @@ pub fn allocate_id(title: &str, seed: &str, taken: &BTreeSet<String>) -> String 
     }
     // Eight hex characters colliding means the same title and the same timestamp eight times.
     // Falling back to a longer hash of the whole taken set is deterministic and terminates.
-    format!("T-{}", state::short_hash(&format!("{title}{seed}{}", taken.len()), 10))
+    format!(
+        "T-{}",
+        state::short_hash(&format!("{title}{seed}{}", taken.len()), 10)
+    )
 }
 
 pub fn new_task(root: &Path, title: &str) -> Reading<u8> {
@@ -606,7 +660,10 @@ pub fn new_task(root: &Path, title: &str) -> Reading<u8> {
 }
 
 pub fn new_requirement(root: &Path, area: &str) -> Reading<u8> {
-    let path = root.join("aios").join("requirements").join(format!("{area}.md"));
+    let path = root
+        .join("aios")
+        .join("requirements")
+        .join(format!("{area}.md"));
     if path.exists() {
         return Err(CouldNotRun(format!(
             "{} already exists. Requirements are appended to their area file, not given a file \
@@ -657,8 +714,14 @@ pub fn list(root: &Path, filter: Option<&str>) -> Reading<u8> {
     };
 
     let mut shown = 0;
-    for status in [Status::Doing, Status::Review, Status::Todo, Status::Waiting,
-                   Status::Done, Status::Dropped] {
+    for status in [
+        Status::Doing,
+        Status::Review,
+        Status::Todo,
+        Status::Waiting,
+        Status::Done,
+        Status::Dropped,
+    ] {
         if wanted.is_some() && wanted != Some(status) {
             continue;
         }
@@ -673,9 +736,18 @@ pub fn list(root: &Path, filter: Option<&str>) -> Reading<u8> {
                 Status::Dropped => task.reason.clone().unwrap_or_default(),
                 _ => String::new(),
             };
-            println!("  {}  p{} {:<6}  {}{}", task.id, task.priority, task.risk.name(),
-                     task.title, if note.is_empty() { String::new() }
-                                 else { format!("  — {note}") });
+            println!(
+                "  {}  p{} {:<6}  {}{}",
+                task.id,
+                task.priority,
+                task.risk.name(),
+                task.title,
+                if note.is_empty() {
+                    String::new()
+                } else {
+                    format!("  — {note}")
+                }
+            );
             shown += 1;
         }
         println!();
@@ -735,11 +807,18 @@ pub fn check(root: &Path, workflow: &str, list_only: bool) -> Reading<u8> {
 
     println!();
     if failures.is_empty() {
-        println!("{} step(s) passed. This is the same list CI runs, read from the same file.",
-                 steps.len());
+        println!(
+            "{} step(s) passed. This is the same list CI runs, read from the same file.",
+            steps.len()
+        );
         return Ok(OK);
     }
-    eprintln!("{} of {} step(s) failed: {}", failures.len(), steps.len(), failures.join(", "));
+    eprintln!(
+        "{} of {} step(s) failed: {}",
+        failures.len(),
+        steps.len(),
+        failures.join(", ")
+    );
     Ok(FAILED)
 }
 
@@ -756,8 +835,12 @@ pub fn workflow_steps(text: &str) -> Vec<(String, String)> {
         return steps;
     };
     for job_name in jobs.keys() {
-        let Some(job) = jobs.get(&job_name) else { continue };
-        let Some(list) = job.get("steps") else { continue };
+        let Some(job) = jobs.get(&job_name) else {
+            continue;
+        };
+        let Some(list) = job.get("steps") else {
+            continue;
+        };
         for step in list.as_list() {
             let Some(command) = step.get("run").and_then(|v| v.as_str()) else {
                 continue;
@@ -891,8 +974,7 @@ mod tests {
             task("T-d", Status::Done, 1, Risk::Low, &[]),
             task("T-e", Status::Todo, 1, Risk::Low, &["T-d"]),
         ];
-        let expected: Vec<String> =
-            select(&base).iter().map(|t| t.id.clone()).collect();
+        let expected: Vec<String> = select(&base).iter().map(|t| t.id.clone()).collect();
         for rotation in 1..base.len() {
             let mut rotated = base.clone();
             rotated.rotate_left(rotation);
@@ -906,7 +988,10 @@ mod tests {
         let subject = task("T-a", Status::Doing, 1, Risk::Low, &[]);
         let refusal = transition_refusal(&subject, Status::Done).unwrap();
         assert!(refusal.contains("done"), "{refusal}");
-        assert!(refusal.contains("verify"), "the message must say what would make it legal");
+        assert!(
+            refusal.contains("verify"),
+            "the message must say what would make it legal"
+        );
     }
 
     #[test]
@@ -932,8 +1017,14 @@ mod tests {
     fn every_state_pair_is_decided_one_way_or_the_other() {
         // No pair may fall through to a default. A transition nobody considered is one that
         // either happens by accident or is refused with a message that explains nothing.
-        let all = [Status::Todo, Status::Doing, Status::Review, Status::Done,
-                   Status::Waiting, Status::Dropped];
+        let all = [
+            Status::Todo,
+            Status::Doing,
+            Status::Review,
+            Status::Done,
+            Status::Waiting,
+            Status::Dropped,
+        ];
         for from in all {
             for to in all {
                 let subject = task("T-a", from, 1, Risk::Low, &[]);
@@ -943,9 +1034,12 @@ mod tests {
                 } else {
                     // Either legal, or refused with a message that names both states.
                     if let Some(text) = refusal {
-                        assert!(text.contains(from.name()) || text.contains("done")
+                        assert!(
+                            text.contains(from.name())
+                                || text.contains("done")
                                 || text.contains("dropped"),
-                                "{from:?} -> {to:?} refused without saying why: {text}");
+                            "{from:?} -> {to:?} refused without saying why: {text}"
+                        );
                     }
                 }
             }
@@ -975,7 +1069,8 @@ mod tests {
 
     #[test]
     fn stripping_a_field_takes_its_indented_block_with_it() {
-        let source = "---\nid: T-1\nverified:\n  sha: old\n  at: 2020-01-01\nstatus: done\n---\nb\n";
+        let source =
+            "---\nid: T-1\nverified:\n  sha: old\n  at: 2020-01-01\nstatus: done\n---\nb\n";
         let stripped = strip_field(source, "verified");
         assert!(!stripped.contains("sha: old"));
         assert!(!stripped.contains("at: 2020-01-01"));

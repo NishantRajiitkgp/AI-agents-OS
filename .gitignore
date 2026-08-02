@@ -12,6 +12,11 @@ __pycache__/
 # filesystem rather than the index — so an ignored directory still trips it.
 .pytest_cache/
 
+# Scratch files. The development machine reads CI over the REST API with throwaway scripts,
+# and `git add -A` has swept two of them into commits already.
+.tmp-*
+fmt.patch
+
 # Local tool and editor state that is per-machine rather than per-project.
 .vscode/
 .idea/

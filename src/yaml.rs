@@ -281,7 +281,13 @@ fn block_scalar(raw: &[&str], start: usize, parent_indent: usize, folded: bool) 
         .unwrap_or(0);
     let body: Vec<String> = collected
         .iter()
-        .map(|l| if l.len() >= common { l[common..].to_string() } else { String::new() })
+        .map(|l| {
+            if l.len() >= common {
+                l[common..].to_string()
+            } else {
+                String::new()
+            }
+        })
         .collect();
 
     let text = if folded {
@@ -496,7 +502,10 @@ fn parse_map(
 pub fn frontmatter(source: &str) -> Result<(Value, String), ParseError> {
     let mut lines = source.lines();
     let Some(first) = lines.next() else {
-        return Err(ParseError { line: 1, message: "file is empty".into() });
+        return Err(ParseError {
+            line: 1,
+            message: "file is empty".into(),
+        });
     };
     if first.trim_end() != "---" {
         return Err(ParseError {
@@ -553,7 +562,10 @@ mod tests {
     #[test]
     fn a_lone_scalar_reads_as_a_list_of_one() {
         let value = parse("touches: aios/bin/**\n").unwrap();
-        assert_eq!(value.get("touches").unwrap().strings(), vec!["aios/bin/**".to_string()]);
+        assert_eq!(
+            value.get("touches").unwrap().strings(),
+            vec!["aios/bin/**".to_string()]
+        );
     }
 
     #[test]
@@ -577,13 +589,19 @@ mod tests {
     fn a_colon_inside_a_key_does_not_split_it() {
         // The deny list is keyed by regexes, several of which contain a colon.
         let value = parse("'a(?:b|c)': ['x:*']\n").unwrap();
-        assert_eq!(value.get("a(?:b|c)").unwrap().strings(), vec!["x:*".to_string()]);
+        assert_eq!(
+            value.get("a(?:b|c)").unwrap().strings(),
+            vec!["x:*".to_string()]
+        );
     }
 
     #[test]
     fn a_colon_with_no_space_after_it_is_not_a_separator() {
         let value = parse("url: https://example.com/x\n").unwrap();
-        assert_eq!(value.get("url").unwrap().as_str(), Some("https://example.com/x"));
+        assert_eq!(
+            value.get("url").unwrap().as_str(),
+            Some("https://example.com/x")
+        );
     }
 
     #[test]
@@ -601,7 +619,10 @@ mod tests {
     #[test]
     fn reads_a_folded_block_scalar() {
         let value = parse("note: >-\n  one line\n  and another\n").unwrap();
-        assert_eq!(value.get("note").unwrap().as_str(), Some("one line and another"));
+        assert_eq!(
+            value.get("note").unwrap().as_str(),
+            Some("one line and another")
+        );
     }
 
     #[test]

@@ -57,8 +57,7 @@ pub fn find_root(start: &Path) -> Reading<PathBuf> {
 }
 
 pub fn read_to_string(path: &Path) -> Reading<String> {
-    let bytes =
-        fs::read(path).map_err(|e| CouldNotRun(format!("{}: {e}", path.display())))?;
+    let bytes = fs::read(path).map_err(|e| CouldNotRun(format!("{}: {e}", path.display())))?;
     // A byte-order mark is stripped here rather than tolerated downstream. Frontmatter
     // parsing refuses a `---` that is not on the first byte, on purpose, and a BOM is the
     // most common way for that to happen invisibly.
@@ -179,7 +178,10 @@ impl Task {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .ok_or_else(|| {
-                    CouldNotRun(format!("{}: missing required field {key:?}", path.display()))
+                    CouldNotRun(format!(
+                        "{}: missing required field {key:?}",
+                        path.display()
+                    ))
                 })
         };
 
@@ -204,7 +206,10 @@ impl Task {
             .get("priority")
             .and_then(|v| v.as_int())
             .ok_or_else(|| {
-                CouldNotRun(format!("{}: priority must be a whole number", path.display()))
+                CouldNotRun(format!(
+                    "{}: priority must be a whole number",
+                    path.display()
+                ))
             })?;
 
         Ok(Task {
@@ -232,8 +237,7 @@ impl Task {
 /// shrinks.
 pub fn load_tasks(root: &Path) -> Reading<(Vec<Task>, Vec<CouldNotRun>)> {
     let dir = root.join("aios").join("tasks");
-    let entries = fs::read_dir(&dir)
-        .map_err(|e| CouldNotRun(format!("{}: {e}", dir.display())))?;
+    let entries = fs::read_dir(&dir).map_err(|e| CouldNotRun(format!("{}: {e}", dir.display())))?;
 
     let mut tasks = Vec::new();
     let mut broken = Vec::new();
@@ -281,7 +285,11 @@ pub fn active_requirements(root: &Path) -> Reading<Vec<String>> {
             if !trimmed.starts_with('|') {
                 continue;
             }
-            let cells: Vec<&str> = trimmed.trim_matches('|').split('|').map(str::trim).collect();
+            let cells: Vec<&str> = trimmed
+                .trim_matches('|')
+                .split('|')
+                .map(str::trim)
+                .collect();
             if cells.len() < 2 {
                 continue;
             }
@@ -510,7 +518,10 @@ mod tests {
 
     #[test]
     fn an_unknown_status_is_rejected_rather_than_defaulted() {
-        assert!(Status::parse("blocked").is_none(), "blocked is derived, not stored");
+        assert!(
+            Status::parse("blocked").is_none(),
+            "blocked is derived, not stored"
+        );
         assert!(Status::parse("").is_none());
     }
 
@@ -554,7 +565,10 @@ mod tests {
     fn a_field_name_in_the_body_is_not_mistaken_for_the_field() {
         let source = "---\nid: T-1\nstatus: todo\n---\nstatus: done\n";
         let updated = set_frontmatter_field(source, "status", "doing").unwrap();
-        assert!(updated.ends_with("status: done\n"), "the body must not be touched");
+        assert!(
+            updated.ends_with("status: done\n"),
+            "the body must not be touched"
+        );
     }
 
     #[test]
