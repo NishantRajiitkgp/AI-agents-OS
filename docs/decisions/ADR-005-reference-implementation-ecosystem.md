@@ -32,7 +32,7 @@ choose their own under D-041.
 
 | Constraint | Status | Basis |
 |---|---|---|
-| Runs identically under PowerShell | Satisfied by construction; **to be verified at `M1-08`** | A native Windows executable, not a shell script. Assumed until a clean Windows checkout proves it. |
+| Runs identically under PowerShell | **Verified at `M1-08`** | A native Windows executable, not a shell script. A clean `windows-latest` checkout builds it with no setup step, and the exit-code assertions hold when it is invoked through PowerShell rather than through bash. Recorded here because this row scheduled its own verification; the decision above is unchanged. |
 | Installs without a global install | Satisfied for consumers | Consumers run a released binary; nothing is installed. Contributors to the OS itself do need the toolchain, which is the accepted asymmetry. |
 | Every gate script under `aios/bin/` is reachable | Satisfied | Gate scripts are subcommands of, or binaries invoked by, the same artifact. |
 | A cloned project invokes `aios/bin/**` without the OS's runtime | Satisfied | A statically linked binary has no runtime to adopt. This is the constraint that decided the choice. |

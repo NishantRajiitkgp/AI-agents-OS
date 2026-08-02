@@ -463,7 +463,7 @@ checks, tiers. Gates on top of unreliable state are decoration.
 > `src/commands.rs` (the selector, the transitions, the verification record), `src/main.rs`
 > (dispatch). Around 60 Rust unit tests, written to run in CI.
 
-- [~] **M1-08** Build the CLI entry point — **BLOCKED, not started**
+- [x] **M1-08** Build the CLI entry point
   - Pin the toolchain in-repo so contributor and CI builds cannot diverge — the same equivalence
     `aios check` demands of local versus CI.
   - Verify, rather than assume, the constraint ADR-005 marked as unproven: identical behaviour
@@ -486,8 +486,13 @@ checks, tiers. Gates on top of unreliable state are decoration.
     the machine the work happens on before the ADR selecting it is recorded. ADR-005 weighed
     the ecosystem's properties and never asked whether it could be obtained here — one request
     would have caught this three milestones earlier.
+  - **Verified in CI.** `windows-latest` builds from a clean checkout with no setup step and
+    the PowerShell behaviour assertions pass — which is the Done-when, both halves. ADR-005's
+    constraint table now records that row as verified rather than assumed. The toolchain still
+    cannot be fetched on the development machine and CI is still the only compiler; what
+    changed is that it has now compiled this.
 
-- [~] **M1-09** `aios new task|req`
+- [x] **M1-09** `aios new task|req`
   - Scaffolds a valid file and allocates an ID. Task IDs are `T-` plus four hex characters
     hashed from title and creation timestamp, extending to six on collision — hash-based
     because sequential IDs conflict on every parallel branch.
@@ -498,8 +503,13 @@ checks, tiers. Gates on top of unreliable state are decoration.
     every parallel branch, where two people both get "the next number" and the conflict
     surfaces at merge time as two different tasks with one ID. Tested for the forced-collision
     widening and for being a pure function of its inputs, so two machines agree.
+  - **Verified in CI.** `ids_widen_on_collision` and
+    `an_id_is_a_pure_function_of_title_and_seed` pass. One departure from the Done-when's
+    wording, stated rather than glossed: widening goes one character at a time, so a single
+    forced collision yields five characters and six takes two. Uniqueness holds either way,
+    and uniqueness is the property the width was standing in for.
 
-- [~] **M1-10** `aios next` — the deterministic selector
+- [x] **M1-10** `aios next` — the deterministic selector
   - Exact algorithm: filter `todo` → drop those blocked by anything not in `{done, dropped}` →
     hard-error on unresolvable `satisfies` → sort by priority asc, tasks-unblocked desc, risk
     asc, `created_at` asc, id lexicographic asc → return head.
@@ -524,6 +534,8 @@ checks, tiers. Gates on top of unreliable state are decoration.
     of its own. The empty case reports which task is blocked by what, and in which state,
     because "no tasks available" is equally true when the backlog is empty, when everything is
     in flight, and when one unfinished task is holding up nine others.
+  - **Verified in CI.** Eight selector tests pass, `the_answer_does_not_depend_on_input_order`
+    among them. The rotation-rather-than-shuffle departure recorded above is unchanged.
 
 - [~] **M1-11** Implement the refusal conditions on `aios next`
   - Refuses to return anything when backlog validation fails or when an incident is open with
@@ -537,8 +549,12 @@ checks, tiers. Gates on top of unreliable state are decoration.
     refusing is the intended behaviour rather than a bug to route around.
   - The review-debt refusal from M5-09 has its single call site marked in `next()` and nothing
     else, as this task asked.
+  - **Written, still not verified.** Both refusals are implemented, and CI runs `aios next`
+    inside this repository without it reporting could-not-run. But no test builds an invalid
+    backlog, or an incident with `blocks_work: true`, and asserts that it refuses. What is
+    proven is the path where nothing is wrong, which is not the path this task is about.
 
-- [~] **M1-12** `aios start` / `aios submit` — state transitions
+- [x] **M1-12** `aios start` / `aios submit` — state transitions
   - Six states, no more: `todo → doing → review → done`, plus `waiting` (external blockers
     only, requires `waiting_on`) and `dropped` (requires a reason).
   - `blocked` is **not** a state — it is derivable from `blocked_by`, and derived state that is
@@ -556,6 +572,8 @@ checks, tiers. Gates on top of unreliable state are decoration.
   - Transitions rewrite the single `status:` line and leave the rest of the file
     byte-identical. Round-tripping through the parser would reformat every comment and block
     scalar, turning a one-word change into an unreviewable diff.
+  - **Verified in CI.** Five transition tests pass, `every_state_pair_is_decided_one_way_or_
+    the_other` among them, which walks all thirty-six pairs and asserts none falls through.
 
 - [~] **M1-13** `aios done` and the verification record — **the mechanism everything hangs on**
   - Runs every command in `verify`, refuses if any exits non-zero, then writes a record into
@@ -570,8 +588,14 @@ checks, tiers. Gates on top of unreliable state are decoration.
   - The record written afterwards names the commit SHA, each command, and its exit code. It is
     evidence, not an assertion: its only value is that CI can re-run those commands at that
     SHA and disagree (M1-15).
+  - **Written, still not verified — and this is the one that matters most.** The record's
+    mechanics are covered (`a_record_is_added_before_the_closing_marker` and both
+    `strip_field` tests), but nothing asserts the Done-when itself: that a task with a failing
+    `verify` cannot reach `done`. That currently rests on `--force` not existing, and an
+    absence is precisely what a later edit restores without anyone noticing. It needs a test
+    that runs `done` against a failing verify and asserts the task is still in `review`.
 
-- [~] **M1-14** `aios list` and `aios check`
+- [x] **M1-14** `aios list` and `aios check`
   - `backlog` / `in progress` / `completed` are **queries, not files** — an aggregate status
     file makes every transition a two-file edit and produces merge conflicts on every branch.
   - `aios check` runs locally exactly what CI runs. A gate whose local and remote behaviour
@@ -585,6 +609,10 @@ checks, tiers. Gates on top of unreliable state are decoration.
     not restate the list, which is the requirement: a local check that lists its own steps is
     a second implementation, and the two drift in the direction of the local one being kinder.
     Adding a step to CI adds it here with no second edit.
+  - **Verified in CI.** The step "What `aios check` would run is what CI runs" diffs the
+    binary's `check --list` output against the steps parsed out of `hygiene.yml` and fails on
+    any difference. That is the Done-when — identical code path, proven by a test — rather
+    than an assertion that they agree.
 
 - [x] **M1-15** CI: independently re-check every verification record
   - For every task marked `done`: the recorded SHA must exist, the recorded commands must match
@@ -610,7 +638,7 @@ checks, tiers. Gates on top of unreliable state are decoration.
     reporting that as forgery would be a false accusation aimed at the state of the repository
     rather than at anything anybody did.
 
-- [~] **M1-16** CI workflow running `aios check` on every pull request
+- [x] **M1-16** CI workflow running `aios check` on every pull request
   - **Done when:** a schema violation on a branch turns the build red before review.
   - **Written.** Two steps in `build.yml`, which already runs on every pull request.
   - `aios check --list` names the steps the binary would run, and CI diffs that against the
@@ -622,6 +650,9 @@ checks, tiers. Gates on top of unreliable state are decoration.
     not 2. Malformed state is a failure, not an inability to run, and a tool that reports it as
     the second lets a broken backlog read as an environment problem somebody will retry.
   - Unverified along with the rest of the binary.
+  - **Verified in CI.** The step "A schema violation turns the build red through the binary"
+    plants a malformed task file, asserts the binary exits 1 rather than 2, and removes it.
+    Exit 1 specifically: a malformed file is a failure, not an inability to run.
 
 - [x] **M1-17** Adversarially validate D-010
   - Hand-edit a task's frontmatter to `done` without running the CLI. Amend a `verify` list
