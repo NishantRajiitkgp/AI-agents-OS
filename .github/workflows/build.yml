@@ -46,15 +46,29 @@ jobs:
       #
       # The behaviour checks below deliberately keep the default and skip, because they run
       # the binary: with no binary, their failure describes the build failure a second time.
+      # Both run through report-diagnostics.py, which copies the output into annotations
+      # because job logs are served only to administrators and these two are the steps whose
+      # output someone has to act on. The commands themselves are unchanged and the exit code
+      # is passed through; the wrapper adds a readable copy and decides nothing.
+      #
+      # `python3` is resolved rather than assumed: the runner images carry it under different
+      # names on Windows and Linux, and this workflow is the one that runs on both.
       - name: Formatting
         if: ${{ !cancelled() }}
-        run: cargo fmt --check
+        shell: bash
+        run: |
+          py=$(command -v python3 || command -v python)
+          "$py" .github/scripts/report-diagnostics.py --title "cargo fmt" -- cargo fmt --check
 
       # Warnings are denied rather than reported. A warning nobody must act on is a warning
       # everybody learns to scroll past.
       - name: Lints
         if: ${{ !cancelled() }}
-        run: cargo clippy --all-targets -- -D warnings
+        shell: bash
+        run: |
+          py=$(command -v python3 || command -v python)
+          "$py" .github/scripts/report-diagnostics.py --title "cargo clippy" -- \
+            cargo clippy --all-targets -- -D warnings
 
       - name: Build
         if: ${{ !cancelled() }}
