@@ -92,14 +92,23 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
+          # `shell: bash` runs the script with -e, and `set -uo pipefail` does not clear it.
+          # Every assertion below is that some invocation exits non-zero, so -e aborts the step
+          # at the first one — with the exact code it was about to check, which reads as the
+          # binary being broken rather than the harness. The PowerShell twin passes because it
+          # disables the same behaviour explicitly on its first line.
+          set +e
           bin=target/release/aios
+          # Failures go to an annotation as well as the log: job logs are served only to
+          # administrators, so a message that exists only there cannot be acted on.
+          fail() { printf '::error title=aios exit codes::%s\n' "$1"; exit 1; }
           "$bin" --version
           "$bin" help
           expect() {
             "$bin" "${@:2}" >/dev/null 2>&1
             got=$?
             if [ "$got" -ne "$1" ]; then
-              echo "expected exit $1 from 'aios ${*:2}', got $got"; exit 1
+              fail "expected exit $1 from 'aios ${*:2}', got $got"
             fi
           }
           expect 0 --version
@@ -117,14 +126,16 @@ jobs:
             "$bin" "$subcommand" >/dev/null 2>&1
             got=$?
             if [ "$got" -eq 2 ]; then
-              echo "'aios $subcommand' could not run inside its own repository"; exit 1
+              fail "'aios $subcommand' could not run inside its own repository"
             fi
           done
 
           # Root discovery, per ADR-013 §4: refuse outside a repository rather than guessing
-          # that the working directory is one.
-          (cd "$RUNNER_TEMP" && "$OLDPWD/$bin" next >/dev/null 2>&1; \
-            [ $? -eq 2 ] || { echo "did not refuse outside a repository"; exit 1; })
+          # that the working directory is one. The check is read outside the subshell: `exit`
+          # within one leaves the subshell, not the step, so a failure inside the parentheses
+          # would otherwise be discarded and this assertion would pass unconditionally.
+          (cd "$RUNNER_TEMP" && "$OLDPWD/$bin" next >/dev/null 2>&1; [ $? -eq 2 ])
+          [ $? -eq 0 ] || fail "did not refuse outside a repository"
           echo "exit codes correct"
 
       # ADR-005 recorded "identical behaviour under PowerShell" as assumed, not verified.
