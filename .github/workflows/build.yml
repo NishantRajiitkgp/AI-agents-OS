@@ -208,13 +208,19 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
+          # Same reason as the exit-code step: `shell: bash` supplies -e, which would abort
+          # here on the very failure this asserts must happen — and abort before the cleanup
+          # below, leaving the malformed file behind for every later step to trip over.
+          set +e
           broken=aios/tasks/T-ffff.md
           printf -- '---\nid: T-ffff\nstatus: nonsense\n---\n' > "$broken"
           target/release/aios list >/dev/null 2>&1
           got=$?
           rm -f "$broken"
           if [ "$got" -ne 1 ]; then
-            echo "expected exit 1 from a malformed task file, got $got"; exit 1
+            printf '::error title=aios schema refusal::%s\n' \
+              "expected exit 1 from a malformed task file, got $got"
+            exit 1
           fi
           echo "malformed state is refused, and reported as failure rather than as could-not-run"
 
