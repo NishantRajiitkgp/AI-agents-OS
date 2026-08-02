@@ -7,10 +7,10 @@ The failure this exists to catch has one shape: an instruction that was true whe
 written and is not true now. Nothing about a stale instruction looks wrong. It reads exactly
 like a correct one, and an agent follows it exactly as confidently, which is why it has to be
 caught mechanically rather than noticed. This repository has already produced the failure
-twice â€” links broke when the tree was flattened, and a rule kept naming a stack the repository
+twice — links broke when the tree was flattened, and a rule kept naming a stack the repository
 had stopped presuming.
 
-Most of what [04 Â§6](../../docs/design/04-state-and-tasks.md) lists is already enforced and is
+Most of what [04 §6](../../docs/design/04-state-and-tasks.md) lists is already enforced and is
 deliberately not re-implemented here: the budgets are ratchets, the task line cap and the
 status vocabulary are `validate-tasks.py`, the ID graph is `validate-references.py`, and
 `enforced_by` resolution is `validate-config.py`. A second implementation of a check is a
@@ -18,7 +18,7 @@ second answer to the same question, which is the whole argument of D-040.
 
 What was left unowned is **path references**, and it is the largest surface of the four. Link
 resolution previously lived in `validate-references.py` and ran over requirement and task files
-only â€” roughly a twentieth of the markdown here, and not the part agents read on every turn.
+only — roughly a twentieth of the markdown here, and not the part agents read on every turn.
 It moved here rather than being copied, so the rule still has one implementation; it now just
 covers everything.
 
@@ -29,8 +29,8 @@ Two things are checked rather than one, because they rot differently:
   are what an agent actually acts on: `aios/tasks/` in a sentence is an instruction to look
   there, and it is worth no less than a link.
 
-A glob is checked down to its literal prefix â€” `aios/tasks/**` asserts that `aios/tasks/`
-exists â€” because that is the part a rename invalidates and the rest is by construction unknown.
+A glob is checked down to its literal prefix — `aios/tasks/**` asserts that `aios/tasks/`
+exists — because that is the part a rename invalidates and the rest is by construction unknown.
 
 Usage:
     check-memory.py                 check this repository
@@ -55,7 +55,7 @@ PASS, FAIL, COULD_NOT_RUN = 0, 1, 2
 # nonsense on one of them.
 #
 # **Links are navigation.** A broken one is broken wherever it is, including in a document
-# nobody may edit â€” an ADR whose link no longer resolves does not become correct by being
+# nobody may edit — an ADR whose link no longer resolves does not become correct by being
 # immutable, it becomes a dead end. So links are checked everywhere in scope.
 #
 # **Prose is narration, and in an append-only record it is history.** An incident that says
@@ -76,7 +76,7 @@ INSTRUCTIONS = [
     "docs/runbooks/**/*.md",
 ]
 
-# Checked for links only. `task.md` is here because it is a plan rather than an instruction â€”
+# Checked for links only. `task.md` is here because it is a plan rather than an instruction —
 # and its links are checked precisely because they have broken before, when the tree was
 # flattened and every relative path in it moved at once.
 NAVIGATION = INSTRUCTIONS + [
@@ -107,7 +107,7 @@ class CouldNotRun(Exception):
 
 
 def literal_prefix(reference: str) -> str:
-    """The part of a glob a rename can invalidate. `aios/tasks/**` â†’ `aios/tasks`."""
+    """The part of a glob a rename can invalidate. `aios/tasks/**` → `aios/tasks`."""
     parts = []
     for part in reference.split("/"):
         if any(char in part for char in "*?["):
@@ -144,7 +144,7 @@ def prose(text: str) -> set[str]:
 
 
 def resolves(root: Path, source: Path, reference: str, by_name: bool) -> bool:
-    """Relative to the file, then to the repository root, then â€” for prose â€” by name.
+    """Relative to the file, then to the repository root, then — for prose — by name.
 
     The first two are conventions this repository uses in equal measure: a link in an ADR is
     written relative to the ADR, and `aios/tasks/` in AGENTS.md is written from the root.

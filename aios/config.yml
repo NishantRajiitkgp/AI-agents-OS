@@ -1,8 +1,8 @@
-﻿# aios configuration.
+# aios configuration.
 #
 # Every key here is declared in `aios/config.schema.yml`, which records what the key does and
-# what reads it. A key that nothing reads is not configuration â€” it is decoration that looks
-# like a control â€” so the schema requires each one to name either its enforcement point or the
+# what reads it. A key that nothing reads is not configuration — it is decoration that looks
+# like a control — so the schema requires each one to name either its enforcement point or the
 # task that will provide one.
 #
 # This file is in the protected set: the agent reads it and does not write it. A grader whose
@@ -59,7 +59,7 @@ budgets:
   # bypass behaviour the gate layer exists to prevent.
   check_seconds: 60
   # Wall-clock ceiling for the pre-commit hook: format, secrets scan, changed-file lint. Five
-  # seconds is the point past which a hook stops feeling like part of committing (06 Â§6).
+  # seconds is the point past which a hook stops feeling like part of committing (06 §6).
   pre_commit_seconds: 5
   # Wall-clock ceiling for the whole pull-request run. Fast feedback is one of the capabilities
   # that flips AI's effect on stability from negative to positive, so this is a requirement
@@ -77,12 +77,12 @@ gates:
   delete_advisory_after_ignored: 20
 
 # Autonomy: how many tasks may begin without a human, and whether the first needs approval.
-# Transcribed from the table in 05 Â§4, one row per project tier, kept in that shape so a
+# Transcribed from the table in 05 §4, one row per project tier, kept in that shape so a
 # reader can check it against the source rather than reassemble it from twelve keys.
 #
-#   A0 â€” a human approves the approach before implementation, and reviews the diff.
-#   A1 â€” one task, then stop. The default.
-#   A2 â€” chain to chain_limit, or until any Contract gate fails.
+#   A0 — a human approves the approach before implementation, and reviews the diff.
+#   A1 — one task, then stop. The default.
+#   A2 — chain to chain_limit, or until any Contract gate fails.
 #
 # `risk: high` never reaches A2 at any tier. That is an invariant, not a property of these
 # numbers: it is asserted separately, so editing the table cannot quietly repeal it.
@@ -106,7 +106,7 @@ autonomy:
 # `writes: touches` means the active task's declared scope, which is the only mode whose
 # permitted set is not knowable until a task is selected.
 #
-# The active mode is named in `.aios-mode` at the repository root, which is not committed â€”
+# The active mode is named in `.aios-mode` at the repository root, which is not committed —
 # it is session state, not project state. No file means no mode, and no mode allows
 # everything: a template whose default is "refuse" blocks a fresh clone before it has been
 # configured, which is the fail-closed failure this repository already had once.
@@ -156,7 +156,7 @@ parallelism:
 # This layer is Advisory, deliberately. Cursor's own documentation calls allowlists
 # "best-effort convenience" and not a security boundary, and a repo-level file can only widen
 # a developer's permissions, never narrow them. These patterns catch the obvious slip. What
-# actually contains the agent is server-side required review and CI gates it cannot edit â€”
+# actually contains the agent is server-side required review and CI gates it cannot edit —
 # so effort spent making these airtight is effort spent in the wrong place.
 deny_commands:
   # Destructive filesystem removal. Both flag orderings, and long-form --recursive --force.

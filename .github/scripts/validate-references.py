@@ -4,7 +4,7 @@
 PROVISIONAL. Moves into `aios check` at M1-14, per ADR-006.
 
 The division of labour: validate-requirements.py and validate-tasks.py each check one file
-against its own schema. This checks the things no single file can know â€” whether what it
+against its own schema. This checks the things no single file can know — whether what it
 points at exists, and whether an identifier is unique across the whole repository. A dangling
 reference is the error shape that looks correct in every file and is wrong in aggregate.
 
@@ -94,7 +94,7 @@ def check_task_refs(tasks: list[dict]) -> None:
                     violations.append(f"{where}: {field} names {dep}, which does not exist")
 
 
-# Link resolution used to live here and ran over requirement and task files only â€” about a
+# Link resolution used to live here and ran over requirement and task files only — about a
 # twentieth of the markdown in this repository, and not the part an agent reads every turn. It
 # moved to `check-memory.py` (M5-01) rather than being copied, so the rule still has exactly
 # one implementation and now covers the instruction layer as well.

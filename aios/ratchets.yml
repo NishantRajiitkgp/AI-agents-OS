@@ -1,4 +1,4 @@
-﻿# Ratchet baselines — the current value of each metric, which may not get worse.
+# Ratchet baselines — the current value of each metric, which may not get worse.
 #
 # A ratchet permits what the repository already is and forbids it worsening. That is why it is
 # the class that solves the threshold problem: always satisfiable, never blocks a good change,

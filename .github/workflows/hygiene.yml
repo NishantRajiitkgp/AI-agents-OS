@@ -223,7 +223,11 @@ jobs:
               printf '::error file=%s::Mojibake: UTF-8 was decoded as a legacy code page and re-encoded.\n' "$f"
               status=1
             fi
-          done < <(git ls-files -- '*.md' '*.mdc' '*.yml' '*.yaml' '*.toml' '*.rs' '*.txt' '*.json')
+          # Script suffixes are in this list because leaving them out is how two corrupted
+          # files reached the first commit: the gate named "tracked text files" was reading
+          # markup and configuration only, and the largest body of prose here is docstrings.
+          done < <(git ls-files -- '*.md' '*.mdc' '*.yml' '*.yaml' '*.toml' '*.rs' '*.txt' \
+                                   '*.json' '*.py' '*.sh' '*.ps1')
           if [ "$status" -ne 0 ]; then
             echo "Repair by decoding as UTF-8, stripping the BOM, re-encoding as cp1252 to"
             echo "recover the original bytes, then decoding those with a strict UTF-8 decoder."
