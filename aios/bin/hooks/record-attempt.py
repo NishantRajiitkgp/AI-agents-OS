@@ -65,7 +65,7 @@ def main() -> int:
         # This one is fail-open, so a hang costs a lost observation rather than an outage, but
         # a hook that stalls the tool call it observes is its own problem.
         event = json.loads(sys.stdin.buffer.readline().decode("utf-8-sig").strip())
-    except Exception:  # noqa: BLE001
+    except Exception:
         return 0  # an observer that cannot read its input records nothing and blocks nothing
 
     if event.get("tool_name") != "Shell":
@@ -78,7 +78,7 @@ def main() -> int:
     raw = event.get("tool_output") or ""
     try:
         output = json.loads(raw).get("output", "") if raw.startswith("{") else raw
-    except Exception:  # noqa: BLE001
+    except Exception:
         output = raw
 
     if FAILED.search(output):

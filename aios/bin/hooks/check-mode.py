@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import respond  # noqa: E402 - the shared response layer sits beside this file
+import respond  # the shared response layer sits beside this file
 
 ALLOW = {"permission": "allow"}
 MODE_FILE = ".aios-mode"
@@ -451,7 +451,7 @@ def decide(event: dict) -> dict:
 def main() -> int:
     try:
         event = read_event()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         # A control that cannot read its input must say so rather than decide. Denying here
         # would repeat the incident; allowing silently would be a control that is absent
         # without anyone noticing, so it allows *and* reports.
@@ -460,7 +460,7 @@ def main() -> int:
 
     try:
         decision = decide(event)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         # Same policy as unreadable input, for the same reason and one more. This hook is
         # registered failClosed, so an exception is not "the control did not apply" — it is
         # every write in the editor refused until someone reads a stack trace. That has

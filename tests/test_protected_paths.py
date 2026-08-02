@@ -48,7 +48,7 @@ trailer = load(SCRIPTS / "check-human-trailer.py", "check_human_trailer")
 # CouldNotRun class, and `assertRaises` against that one never matches the exception the
 # scripts actually raise — the test passes the exception straight through and reports an
 # error, which looks like a broken script and is a broken test.
-from aios_state import CouldNotRun  # noqa: E402
+from aios_state import CouldNotRun
 
 
 class TestTheGeneratedDenyList(unittest.TestCase):

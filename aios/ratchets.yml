@@ -84,6 +84,14 @@ ratchets:
       scripts took the count to 4. The four that remain are regex patterns that *detect*
       suppressions, so the true count is zero.
 
+      The first push put it at 10 and the raise was declined a third time. No Python linter is
+      configured here and none runs in CI, so `# noqa: E402` and `# noqa: BLE001` were
+      suppressing rules that never execute — six tokens addressed to a tool this repository has
+      not chosen, which under D-041 it was not entitled to assume. Each site already explained
+      itself in prose beneath, so deleting the token cost no reasoning and the count returned to
+      4. Worth stating plainly: had a linter been configured, these six were legitimate and the
+      honest move would have been the raise.
+
   - id: gates_registered
     title: Checks registered in aios/gates.yml
     direction: higher_is_better
