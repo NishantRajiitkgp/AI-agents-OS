@@ -53,12 +53,19 @@ jobs:
       #
       # `python3` is resolved rather than assumed: the runner images carry it under different
       # names on Windows and Linux, and this workflow is the one that runs on both.
+      # `cargo fmt --check` prints its own diff dialect, which no tool applies — so acting on it
+      # means transcribing it by hand, and the machine that must do the transcribing is the one
+      # that cannot run rustfmt. Formatting the tree and asking git for the difference reports
+      # the identical failure as a patch that applies. The tree is a throwaway checkout, so
+      # writing to it costs nothing and the run still fails whenever formatting was needed.
       - name: Formatting
         if: ${{ !cancelled() }}
         shell: bash
         run: |
           py=$(command -v python3 || command -v python)
-          "$py" .github/scripts/report-diagnostics.py --title "cargo fmt" -- cargo fmt --check
+          cargo fmt
+          "$py" .github/scripts/report-diagnostics.py --title "cargo fmt" -- \
+            git diff --no-color --exit-code
 
       # Warnings are denied rather than reported. A warning nobody must act on is a warning
       # everybody learns to scroll past.

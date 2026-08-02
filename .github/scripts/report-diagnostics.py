@@ -23,7 +23,7 @@ import sys
 # and truncates an over-long message, and a diagnostic silently cut in half is the failure this
 # script exists to prevent — so the last slot is kept for saying how much was left out.
 MAX_ANNOTATIONS = 9
-CHUNK_LINES = 40
+CHUNK_LINES = 90
 
 
 def escape(text: str) -> str:

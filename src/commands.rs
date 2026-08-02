@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::state::{
-    self, active_requirements, blocking_incidents, by_id, load_tasks, Config, CouldNotRun,
-    Reading, Status, Task,
+    self, CouldNotRun, Reading, Status, Task, active_requirements, blocking_incidents, by_id,
+    load_tasks,
 };
 use crate::yaml;
 
@@ -137,7 +137,7 @@ fn backlog_problems(root: &Path, tasks: &[Task], broken: &[CouldNotRun]) -> Vec<
 fn unblocks(task: &Task, tasks: &[Task]) -> usize {
     tasks
         .iter()
-        .filter(|other| other.blocked_by.iter().any(|id| *id == task.id))
+        .filter(|other| other.blocked_by.contains(&task.id))
         .count()
 }
 
@@ -775,11 +775,6 @@ pub fn workflow_steps(text: &str) -> Vec<(String, String)> {
 
 // --- helpers shared with main -------------------------------------------------------------
 
-pub fn config_summary(root: &Path) -> Reading<String> {
-    let config = Config::load(root)?;
-    Ok(format!("tier {}", config.tier()))
-}
-
 pub fn root_from(explicit: Option<&str>) -> Reading<PathBuf> {
     match explicit {
         Some(path) => {
@@ -798,7 +793,6 @@ pub fn root_from(explicit: Option<&str>) -> Reading<PathBuf> {
 mod tests {
     use super::*;
     use crate::state::Risk;
-    use std::collections::BTreeMap;
 
     fn task(id: &str, status: Status, priority: i64, risk: Risk, blocked: &[&str]) -> Task {
         Task {
@@ -811,14 +805,9 @@ mod tests {
             satisfies: Vec::new(),
             blocked_by: blocked.iter().map(|s| s.to_string()).collect(),
             touches: Vec::new(),
-            acceptance: Vec::new(),
             verify: vec!["true".into()],
-            constraints: Vec::new(),
             waiting_on: None,
             reason: None,
-            duplicate_check: Vec::new(),
-            body: String::new(),
-            frontmatter: yaml::Value::Map(BTreeMap::new()),
         }
     }
 

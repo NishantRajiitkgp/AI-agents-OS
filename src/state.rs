@@ -67,37 +67,6 @@ pub fn read_to_string(path: &Path) -> Reading<String> {
     Ok(text.strip_prefix('\u{feff}').unwrap_or(&text).to_string())
 }
 
-pub struct Config {
-    pub root: PathBuf,
-    pub value: Value,
-}
-
-impl Config {
-    pub fn load(root: &Path) -> Reading<Config> {
-        let path = root.join("aios").join("config.yml");
-        let text = read_to_string(&path)?;
-        let value = yaml::parse(&text)
-            .map_err(|e| CouldNotRun(format!("{}: {e}", path.display())))?;
-        Ok(Config { root: root.to_path_buf(), value })
-    }
-
-    pub fn tier(&self) -> String {
-        self.value
-            .get("tier")
-            .and_then(|v| v.as_str())
-            .unwrap_or("prototype")
-            .to_string()
-    }
-
-    pub fn budget(&self, name: &str) -> Option<i64> {
-        self.value.get("budgets")?.get(name)?.as_int()
-    }
-
-    pub fn strings(&self, key: &str) -> Vec<String> {
-        self.value.get(key).map(|v| v.strings()).unwrap_or_default()
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Status {
     Todo,
@@ -180,14 +149,9 @@ pub struct Task {
     pub satisfies: Vec<String>,
     pub blocked_by: Vec<String>,
     pub touches: Vec<String>,
-    pub acceptance: Vec<String>,
     pub verify: Vec<String>,
-    pub constraints: Vec<String>,
     pub waiting_on: Option<String>,
     pub reason: Option<String>,
-    pub duplicate_check: Vec<String>,
-    pub body: String,
-    pub frontmatter: Value,
 }
 
 fn list_field(header: &Value, key: &str) -> Vec<String> {
@@ -205,7 +169,7 @@ fn optional(header: &Value, key: &str) -> Option<String> {
 impl Task {
     pub fn load(path: &Path) -> Reading<Task> {
         let text = read_to_string(path)?;
-        let (header, body) = yaml::frontmatter(&text)
+        let (header, _body) = yaml::frontmatter(&text)
             .map_err(|e| CouldNotRun(format!("{}: {e}", path.display())))?;
 
         let field = |key: &str| -> Reading<String> {
@@ -253,14 +217,9 @@ impl Task {
             satisfies: list_field(&header, "satisfies"),
             blocked_by: list_field(&header, "blocked_by"),
             touches: list_field(&header, "touches"),
-            acceptance: list_field(&header, "acceptance"),
             verify: list_field(&header, "verify"),
-            constraints: list_field(&header, "constraints"),
             waiting_on: optional(&header, "waiting_on"),
             reason: optional(&header, "reason"),
-            duplicate_check: list_field(&header, "duplicate_check"),
-            body,
-            frontmatter: header,
         })
     }
 }
@@ -330,7 +289,7 @@ pub fn active_requirements(root: &Path) -> Reading<Vec<String>> {
             if id.is_empty() || id.starts_with("---") || id.eq_ignore_ascii_case("id") {
                 continue;
             }
-            let active = cells.iter().any(|c| *c == "active");
+            let active = cells.contains(&"active");
             if active {
                 ids.push(id.to_string());
             }
