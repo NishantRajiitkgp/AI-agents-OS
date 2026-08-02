@@ -1,0 +1,58 @@
+name: Feedback speed
+
+# 06 §6 makes latency a requirement rather than an optimisation, on DORA's finding that fast
+# feedback is one of the capabilities flipping AI's effect on stability from negative to
+# positive. A requirement nobody measures is a preference.
+#
+# The `check` path runs the whole suite, so measuring it on every pull request would add the
+# very latency it is measuring. It runs nightly. Pull requests measure only the cheap path and
+# report the run duration, which costs seconds.
+
+on:
+  pull_request:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  speed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      # The slowest recent completed run, not the average: the budget is a ceiling, and an
+      # average hides exactly the runs a contributor gives up waiting on. Nothing inside a job
+      # can time the run containing it, so this reads finished ones.
+      - name: Find the slowest recent pull-request run
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          seconds=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/runs?event=pull_request&status=completed&per_page=20" \
+            --jq '[.workflow_runs[]
+                   | (( .updated_at | fromdate ) - ( .run_started_at | fromdate ))]
+                  | max // empty' || true)
+          echo "CI_SECONDS=${seconds}" >> "$GITHUB_ENV"
+
+      - name: Feedback-speed budgets
+        run: |
+          set -euo pipefail
+          only="--only pre_commit --only ci_pr"
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            only="--only pre_commit --only check --only ci_pr"
+          fi
+          # Unset on the very first run, when there is no completed run to read. The path then
+          # reports itself unmeasured, which is the truth rather than a zero.
+          if [ -n "${CI_SECONDS:-}" ]; then
+            set -- --ci-seconds "$CI_SECONDS"
+          else
+            set --
+          fi
+          python3 .github/scripts/measure-speed.py $only "$@" --out speed.json
+          cat speed.json >> "$GITHUB_STEP_SUMMARY"

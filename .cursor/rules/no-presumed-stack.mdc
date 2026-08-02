@@ -1,0 +1,25 @@
+---
+description: The OS chose Rust for itself only. A cloned project has chosen nothing — do not pick for it.
+alwaysApply: true
+---
+
+# No presumed stack (D-041)
+
+This repository chose an ecosystem **for its own reference implementation** and recorded why:
+Rust ([ADR-005](../../docs/decisions/ADR-005-reference-implementation-ecosystem.md)) and
+GitHub Actions ([ADR-002](../../docs/decisions/ADR-002-host-forge-is-github.md)). Those
+decisions bind this repository and nothing else.
+
+A project cloned from this template has chosen no language, runtime, package manager, test
+runner, formatter, or CI host. There is no default and no leaning, including toward the two
+above.
+
+When a stack-shaped question arises for such a project, the answer is the **constraints the
+choice must satisfy**, followed by asking — not a tool named to keep moving, and not one
+inferred from this repository, from the last project, or from what is popular.
+
+Where a generic placeholder would be unreadable, a real command may be used if it is labelled
+illustrative. Prefer naming the category over one instance: "the ecosystem's frozen-install
+mode", "the linter's suppression escape hatch".
+
+Reasoning and revisit trigger: [D-041](../../docs/design/10-decision-register.md).

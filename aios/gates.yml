@@ -1,0 +1,783 @@
+# The gate registry — every check, and the class it declares.
+#
+# A check that is not listed here fails validation, and so does a listed check with no class.
+# That second direction is the one that matters: if omission were the way to avoid declaring a
+# class, the declaration would be optional in practice and the register would describe only
+# the checks that volunteered.
+#
+# Classes (06 §1):
+#   contract  blocks, halts the agent, no self-override
+#   ratchet   blocks only regression
+#   advisory  reports, never blocks
+#   report    measured, surfaced, never acted on automatically
+#
+# `class` is either one class, meaning the same at every tier, or a mapping from tier to class.
+# A mapping must name all four tiers: a partial one would resolve to nothing at the tiers it
+# omitted, and a gate that silently does not apply is the failure this register exists to stop.
+# `none` means the check does not run at that tier at all — the dashes in 06 §3.
+#
+# `blocking` records how the class is actually produced, and is checked against `class`:
+#   step        the step fails the job on a non-zero exit
+#   continue    the step carries continue-on-error, so it reports and does not block
+#   script      the script reads the tier and decides, so the workflow cannot tell you
+#
+# A check declaring `advisory` while blocking through `step` is rejected. A class nothing
+# enforces is decoration, and a threshold that lies is worse than no threshold.
+#
+# **A gate whose class varies by tier must use `blocking: script`.** A workflow step is static;
+# its class cannot move when `tier` does. Declaring `step` on a varying gate would mean raising
+# the tier changed the register and nothing else — and 06 §3's whole claim is that raising a
+# tier is a one-line config change rather than a migration. A step that cannot honour that is
+# the migration, hidden.
+#
+# The active tier comes from `tier` in aios/config.yml. That is the one key.
+
+gates:
+  # --- Build and types (06 §3: Contract at every tier) ------------------------------------
+  - id: build.toolchain
+    title: Toolchain resolves from rust-toolchain.toml, with no setup step
+    class: contract
+    blocking: step
+    workflow: build.yml
+    step: Toolchain resolves from rust-toolchain.toml, with no setup step
+
+  - id: build.format
+    title: Formatting
+    class: contract
+    blocking: step
+    workflow: build.yml
+    step: Formatting
+
+  - id: build.lint
+    title: Lints
+    class: contract
+    blocking: step
+    workflow: build.yml
+    step: Lints
+
+  - id: build.compile
+    title: Build
+    class: contract
+    blocking: step
+    workflow: build.yml
+    step: Build
+
+  - id: build.unit_tests
+    title: Unit tests
+    class: contract
+    blocking: step
+    workflow: build.yml
+    step: Unit tests
+
+  - id: build.exit_codes
+    title: Exit codes are what the callers depend on
+    class: contract
+    blocking: step
+    workflow: build.yml
+    step: 'Behaviour: exit codes are what the callers depend on'
+
+  - id: build.powershell
+    title: Identical behaviour under PowerShell (ADR-005)
+    class: contract
+    blocking: step
+    workflow: build.yml
+    step: 'Behaviour: identical under PowerShell (ADR-005)'
+
+  - id: build.check_parity
+    title: What `aios check` would run is what CI runs
+    class: contract
+    blocking: step
+    workflow: build.yml
+    step: What `aios check` would run is what CI runs
+    note: >-
+      M1-14's Done-when, made checkable. `aios check` reads the steps out of the workflow
+      rather than restating them, so the two cannot drift by construction — this gate is what
+      catches the day somebody decides that reading YAML at runtime is fussy and hardcodes the
+      list instead. A local check that lists its own steps is a second implementation, and two
+      implementations of one gate drift in the direction of the local one being kinder, which
+      is precisely the drift nobody notices because their build is green.
+
+  - id: build.state_violation_is_red
+    title: A schema violation turns the build red through the binary
+    class: contract
+    blocking: step
+    workflow: build.yml
+    step: A schema violation turns the build red through the binary
+    note: >-
+      M1-16. The workflow's own python step already refuses a malformed task file; this
+      asserts the binary does too, and returns 1 rather than 2. The distinction is the point —
+      malformed state is a failure, not an inability to run, and a tool that reports it as the
+      second lets a broken backlog read as an environment problem somebody will retry.
+
+  - id: build.self_contained
+    title: The binary is self-contained
+    class: contract
+    blocking: step
+    workflow: build.yml
+    step: The binary is self-contained
+
+  # --- State integrity ---------------------------------------------------------------------
+  # Contract because STATE-6 requires malformed state to be refused rather than guessed at.
+  # A selector that reads a half-parsed task file produces a confident wrong answer.
+  - id: state.config
+    title: Configuration is valid and every key documents its effect
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Configuration is valid and every key documents its effect
+
+  - id: state.requirements
+    title: Requirement area files conform to the schema
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Requirement area files conform to the schema
+
+  - id: state.tasks
+    title: Task files conform to the schema
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Task files conform to the schema
+
+  - id: state.references
+    title: References between requirements and tasks resolve
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: References between requirements and tasks resolve
+
+  - id: state.verification_records
+    title: Every verification record re-checks
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Every verification record re-checks
+    note: >-
+      M1-15, and the reason M1 exists. The state an agent can write is not the state anyone
+      reads: a task says `done` because something wrote that word, and that something is the
+      party being judged. This is the second reader. For every done task it requires a record,
+      a commit git can resolve, a command list matching the task's own `verify`, and those
+      commands passing again at that commit.
+      Contract at every tier and not demotable in practice: a project that stops re-checking
+      its records still has records, which is worse than having none, because the file still
+      reads as evidence. Three of the four failures it reports are the shape of a claim that
+      was never earned rather than of code that rotted, which is why they are counted apart.
+      Validated adversarially by M1-17 against a real repository with real commits.
+
+  - id: quality.lockfile_allowlist
+    title: Every dependency is allowlisted and pinned
+    security: true  # 07 §2 supply chain: allowlist and pinning
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Every dependency is allowlisted and pinned
+    note: Contract at every tier (06 §3). Structural only — it reaches no network.
+
+  - id: quality.dependency_audit
+    title: Every dependency exists, is old enough, and has no known vulnerability
+    security: true  # 07 §2 supply chain: existence, age and known vulnerabilities
+    class: advisory
+    blocking: continue
+    workflow: supply-chain.yml
+    step: Every dependency exists, is old enough, and has no known vulnerability
+    note: >-
+      Advisory because it queries a registry. A Contract gate that reaches the network fails
+      on somebody else's outage, and a gate that fails for reasons unrelated to the change is
+      one people learn to re-run rather than read. Nightly is the right period rather than a
+      weaker per-commit: a disclosure lands without anyone touching this repository, so a
+      change-triggered check would be silent on the day it mattered.
+
+  - id: process.overrides
+    title: Every override is recorded, and no record is rewritten
+    security: true  # the escape hatch itself — a demotable override gate is a way around every other gate
+    class: contract
+    blocking: step
+    workflow: overrides.yml
+    step: Every override is recorded, and no record is rewritten
+    note: >-
+      Contract at every tier. A gate governing the escape hatch from Contract gates cannot be
+      weaker than the gates it governs, or the hatch is the way around all of them. It checks
+      agreement in both directions — a claim with no record, and a record no commit claims —
+      and refuses edits to records already committed. What it cannot check is that a human
+      made the commit; that is server-side review (M2-02) and signing (M5-03), and the
+      `human:` trailer is Advisory in the same sense ADR-012 describes.
+
+  - id: product.toolchain_absent
+    title: Remove the toolchain, then prove it is gone
+    class: contract
+    blocking: step
+    workflow: release.yml
+    step: Remove the toolchain, then prove it is gone
+    note: >-
+      A precondition that is itself a gate. The runner image ships Rust, so a runtime-free
+      proof run on it without removing the toolchain first would pass for the wrong reason and
+      keep passing after the claim stopped being true. It asserts absence and refuses to let
+      the next two steps run otherwise.
+
+  - id: product.invocation_contract
+    title: Prove the invocation contract from another ecosystem
+    class: contract
+    blocking: step
+    workflow: release.yml
+    step: Prove the invocation contract from another ecosystem
+    note: >-
+      ADR-013, checked by a dependency-free Node project calling the shipped binary on a
+      machine with no Rust. This is the one check that can falsify ADR-005's hard constraint,
+      which is why it is contract at every tier — a cloned project that cannot invoke the tool
+      without adopting the OS's runtime has no use for anything else here.
+
+  - id: product.conformance_suite
+    title: Run the conformance suite against the shipped binary
+    class: contract
+    blocking: step
+    workflow: release.yml
+    step: Run the conformance suite against the shipped binary
+    note: >-
+      The same conformance checks that run against stand-ins on every commit, pointed at the
+      artifact being released. Two implementations of the contract checks — this and the Node
+      host — agree or the release stops. One of them being wrong is likelier than both being
+      wrong in the same direction.
+
+  - id: process.feedback_speed
+    title: Feedback-speed budgets
+    class:
+      prototype: report
+      internal: advisory
+      production: ratchet
+      regulated: contract
+    blocking: script
+    workflow: speed.yml
+    step: Feedback-speed budgets
+    note: >-
+      06 §6. Report at prototype because a repository that has never been timed has no idea
+      what it costs, and blocking on a number nobody has seen would make the first red build
+      the first measurement. At the ratchet tier the comparison carries a declared tolerance —
+      wall-clock on a shared runner moves by tens of percent between identical runs, and a
+      gate that fails on that gets re-run rather than read.
+
+  - id: process.review_packet
+    title: Render the review packet
+    class: report
+    blocking: continue
+    workflow: review-packet.yml
+    step: Render the review packet
+    note: >-
+      08 §2.2, and Report by construction. A packet that blocks is a second, worse copy of the
+      gates it reports on. It renders scope grouped by the task's `touches`, gate results
+      grouped by class at the configured tier, and advisory findings — and names the three
+      sections 08 §2.2 asks for that need machinery which does not exist yet, because a
+      checklist quietly missing an item is how the item stops existing.
+
+  - id: process.demotions
+    title: No Contract gate is being overridden routinely
+    security: true  # D-017's counter governs the security subset, so it must not demote itself
+    class: contract
+    blocking: step
+    workflow: overrides.yml
+    step: No Contract gate is being overridden routinely
+    note: >-
+      D-017. Three overrides of one gate inside any thirty-day window demotes it to Ratchet and
+      files a report. Contract because the failure it prevents is a gate that everyone has
+      agreed to stop believing without anyone saying so. The window is anchored to the
+      overrides' own dates rather than to today, so the verdict does not change overnight with
+      nobody having touched anything.
+
+  - id: quality.sast
+    title: High-severity static analysis findings
+    security: true  # 07 §3 product security: static analysis
+    class:
+      prototype: advisory
+      internal: ratchet
+      production: contract
+      regulated: contract
+    blocking: script
+    workflow: sast.yml
+    step: High-severity static analysis findings
+    note: >-
+      The one row in 06 §3 passing through all four classes in order, so the row that most
+      needs the tier mechanism to be real. check-sast.py reads the tier and decides; the
+      analyser only uploads. The first attempt made the CodeQL step itself the gate with
+      continue-on-error, and the registry rejected it — a static flag cannot follow a class
+      that moves through four values.
+
+  - id: quality.ratchets
+    title: No ratchet metric got worse
+    class: ratchet
+    blocking: step
+    workflow: hygiene.yml
+    step: No ratchet metric got worse
+    note: >-
+      Ratchet at every tier rather than varying, because the class is the mechanism here and
+      not a policy setting. Raising the tier changes which *metrics* are ratcheted, which is
+      the rows below; it does not change what a ratchet does.
+
+  - id: state.doc_classification
+    title: Every document is classified and in date
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Every document is classified and in date
+    note: >-
+      M5-03 and M5-04 in one step, because they read one field. Classification is Contract at
+      every tier: the four classes are the exhaustive list of ways a document is prevented
+      from rotting, and one that is none of them will. The staleness half grades by tier —
+      report past the review date, block past double at production and above, because at
+      prototype the right answer to a stale document is often deletion and a blocked build
+      cannot be answered with one.
+
+  - id: state.incident_schema
+    title: Incidents name the control they produced
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Incidents name the control they produced
+    note: >-
+      The mandatory field is the control, or an explicit statement that no practical control
+      exists and why. Without it an incident log is a list of regrets. This is also what makes
+      `aios health`'s learning ratio meaningful — the metric is only honest because the schema
+      will not accept an incident that answers neither way.
+
+  - id: state.standards_schema
+    title: Standards rules are enforced or say why not
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Standards rules are enforced or say why not
+    note: >-
+      Every rule declares `Enforced by:` or `Unenforceable:`; there is no third option, since
+      in practice the third option is prose that sounds like a rule and is followed until the
+      first deadline. A file whose rules are all enforced fails and is deleted — it is a
+      description of the checks, and the checks already are that description.
+
+  - id: process.traceability
+    title: Traceability and orphan report
+    class: report
+    blocking: continue
+    workflow: hygiene.yml
+    step: Traceability and orphan report
+    note: >-
+      Reports and never blocks, by decision rather than timidity. In each of the three
+      questions the right fix is sometimes to change the requirement, and a gate presuming the
+      code is wrong trains people to satisfy it dishonestly — one throwaway test per
+      requirement, or a requirement quietly deferred to clear the report. Both make the map
+      worse while making the number better.
+
+  # --- The monthly reports (06 §1: Report — measured, surfaced, never acted on automatically)
+  # Every one of these is Report by decision rather than by caution. They ask whether a rule is
+  # worth having, and in each the right answer is sometimes to change the rule. A gate that
+  # blocked on them would be answered dishonestly — a throwaway test per requirement, an
+  # advisory switched off rather than fixed — which makes the number better and the system
+  # worse.
+  - id: process.health
+    title: Is the OS earning its keep
+    class: report
+    blocking: continue
+    workflow: monthly.yml
+    step: Is the OS earning its keep
+    note: >-
+      M5-06. Reports what it cannot measure as loudly as what it can, which is the part that
+      keeps it honest — a health report that only prints the metrics it happens to have reads
+      as a complete picture of a system nobody is looking at properly.
+
+  - id: process.prune
+    title: What could be deleted
+    class: report
+    blocking: continue
+    workflow: monthly.yml
+    step: What could be deleted
+    note: M5-07. Proposes; never deletes. A rejected proposal is recorded so it is not re-made.
+
+  - id: process.review_debt
+    title: Review debt
+    class: report
+    blocking: continue
+    workflow: monthly.yml
+    step: Review debt
+    note: >-
+      M5-09, minus the half ADR-014 dropped. Uncommented approvals and diff size are
+      measurable; time spent on a diff is not, and a number that cannot be measured honestly is
+      worse than an absent one because it gets quoted.
+
+  - id: process.upgrade
+    title: What changed in the template
+    class: report
+    blocking: continue
+    workflow: monthly.yml
+    step: What changed in the template
+    note: >-
+      M5-10. Mechanical changes can be applied; judgement changes land as a pull request with
+      a rationale. An unclassified change is treated as judgement, because the failure of
+      guessing wrong in that direction is a slower upgrade rather than an unreviewed one.
+
+  - id: process.advisory_deletion
+    title: Advisory checks nobody acts on
+    class: report
+    blocking: continue
+    workflow: monthly.yml
+    step: Advisory checks nobody acts on
+    note: >-
+      M3-12, and the mirror of the demotion counter. That one demotes a Contract gate people
+      keep overriding; this deletes an Advisory people keep ignoring. Both say the same thing
+      from opposite ends: a gate whose class does not match how it is actually treated is
+      lying, and the register is what should change. It proposes rather than deletes, because
+      a script cannot tell a check nobody values from one everybody has been meaning to fix.
+      Reports zero until there is CI history, and says so rather than printing a clean result.
+
+  - id: process.verifier_instrumentation
+    title: Is the verifier worth its context
+    class: report
+    blocking: continue
+    workflow: monthly.yml
+    step: Is the verifier worth its context
+    note: >-
+      M4-10. Findings per review, and the fraction that survive to an actual code change. The
+      second is the one that decides whether the subagent keeps its place in the always-on
+      budget, and it is measured structurally rather than by asking the agent — self-report is
+      worth least exactly where this is aimed. The proxy is generous on purpose, so a low
+      number is hard to argue with.
+
+  - id: state.context_growth
+    title: Always-on context has not grown
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Always-on context has not grown
+    note: >-
+      Contract at every tier, and distinct from the budget gate and the ratchet on the same
+      set. Those compare against a ceiling and against a checked-in baseline; this compares
+      against git history, which the commit under review cannot edit. Growth is permitted by a
+      `Grow-context:` trailer carrying a reason, the same shape as the override trailer, and
+      for the same reason — the record has to land where the next change cannot revise it.
+      Inert until the repository has a first commit, and says so loudly rather than passing
+      quietly.
+
+  - id: state.memory_hygiene
+    title: Every path named in an instruction file exists
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Every path named in an instruction file exists
+    note: >-
+      Contract at every tier. A stale instruction is invisible by construction: it reads
+      exactly like a correct one and is followed exactly as confidently, so it cannot be left
+      to being noticed. Links are checked everywhere, including in immutable records, because
+      a dead end does not become correct by being unfixable. Prose is checked only where a
+      reader is being instructed — in an append-only record, a path that no longer exists is
+      history rather than staleness.
+
+  - id: state.thin_commands
+    title: Slash commands are one invocation and live in one place
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Slash commands are one invocation and live in one place
+    note: >-
+      Contract at every tier, and the reason is that the drift is invisible: a command that
+      has grown a second step keeps working, it just stops meaning what its name says, in a
+      file with no tests. The one-directory half rests on the M0 measurement that Cursor reads
+      .claude/commands/ — a .cursor/ copy would be the same fact in two tool trees, and the
+      copy nobody edits is the one still being offered in the picker.
+
+  - id: security.codeowners
+    title: Every protected path has a named owner
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Every protected path has a named owner
+    note: >-
+      Contract at every tier, and the only gate in this file whose subject is a control rather
+      than the code. It checks that CODEOWNERS covers `protected_paths` and names a resolvable
+      owner; it cannot check that the branch requires code-owner review, which is the setting
+      that makes any of it true and which lives on the forge (M2-02). The placeholder clause
+      is the load-bearing half: GitHub drops an owner it cannot resolve and still reports the
+      file as valid, so the failure this prevents is a CODEOWNERS that protects nothing while
+      being indistinguishable from one that does.
+
+  - id: security.deny_list_generated
+    title: The tool deny lists match the configuration
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: The tool deny lists match the configuration
+    note: >-
+      The deny list has one source and two consumers with incompatible matchers, so the coarse
+      form is declared in the config beside the regex it widens and the tool file is generated
+      from both. Contract rather than Ratchet because the failure is not gradual: a config
+      edited without regenerating leaves one tool enforcing a rule the other does not, and
+      nothing about either file looks wrong. The check and the writer are separate modes of one
+      script precisely so CI cannot make itself pass.
+
+  - id: security.mcp_allowlist
+    title: MCP servers are allowlisted and the tool configs agree
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: MCP servers are allowlisted and the tool configs agree
+    note: >-
+      Contract at every tier, and in the security subset. An MCP server is both a channel for
+      untrusted content and a set of tools the permission layer cannot inspect, so a server
+      arriving without a decision is exactly the case where noticing later is too late. The
+      drift half exists because two files are read and the one nobody looks at is the one
+      still holding a server somebody thought they had removed.
+
+  - id: state.autonomy_table
+    title: Autonomy levels resolve and hold their invariants
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Autonomy levels resolve and hold their invariants
+    note: >-
+      Contract at every tier, because what it defends is not a preference. The table decides
+      how much work merges without a human looking, and `risk: high` never reaching A2 is an
+      invariant asserted separately from the numbers it constrains — a table that was its own
+      only check could repeal the rule by being edited. The client-side half of this is
+      Advisory (ADR-012); this is the half a pull request fails on.
+
+  - id: state.gate_registry
+    title: Every check declares a class
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Every check declares a class
+    note: >-
+      Registers itself, which is not ceremony: the coverage rule applies to every step that
+      runs a command, and a register exempting its own enforcement would be the first hole
+      anyone looked for.
+
+  - id: state.validator_tests
+    title: Validators reject what they claim to reject
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Validators reject what they claim to reject
+
+  # --- Repository hygiene ------------------------------------------------------------------
+  - id: hygiene.root_markdown
+    title: Root markdown file count is within cap
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Root markdown file count is within cap
+
+  - id: hygiene.symlinks
+    title: No symlinks are committed
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: No symlinks are committed
+
+  - id: hygiene.encoding
+    title: No byte-order marks or mojibake in tracked text files
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: No byte-order marks or mojibake in tracked text files
+
+  - id: hygiene.always_on_budget
+    title: Always-on context is within budget
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Always-on context is within budget
+    note: >-
+      A fixed cap (ADR-011), so contract rather than ratchet. M3-04 adds a ratchet on the same
+      number, which is a different control: the cap stops the budget being blown, the ratchet
+      stops it being crept up to.
+
+  - id: hygiene.facts_not_procedures
+    title: Instruction files state facts, not procedures
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Instruction files state facts, not procedures
+    note: >-
+      The weakest contract here, and it is on notice. It is a regex over prose and it has
+      already produced one false positive (a heading reading "Always-on context is budgeted").
+      Advisory would be the honest class for a heuristic; it is contract because P1 is
+      load-bearing for the whole instruction layer. If it trips falsely again it should be
+      demoted rather than tuned a second time.
+
+  - id: hygiene.paths_exist
+    title: Every path the root documents name exists
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Every path the root documents name exists
+
+  - id: hygiene.shim
+    title: CLAUDE.md is a working import shim
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: CLAUDE.md is a working import shim
+
+  - id: hygiene.readme_commands
+    title: Every command the README shows is one CI runs
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: Every command the README shows is one CI runs
+
+  # --- Agent containment -------------------------------------------------------------------
+  - id: containment.test_integrity
+    title: Diff weakens no tests
+    security: true  # 07 §1 containment: the audit that stops a test suite being weakened
+    class: contract
+    blocking: step
+    workflow: test-integrity.yml
+    step: Diff weakens no tests
+    note: Contract at every tier (06 §3). Validated adversarially by M2-09.
+
+  - id: containment.secrets
+    title: No credentials in the tree or the history
+    security: true  # 07 §1 containment: credentials in the tree or history
+    class: contract
+    blocking: step
+    workflow: secrets.yml
+    step: No credentials in the tree or the history
+
+  - id: containment.scope
+    title: Diff stays inside the declared scope
+    security: true  # 07 §1 containment: changes outside the declared scope
+    class:
+      prototype: advisory
+      internal: contract
+      production: contract
+      regulated: contract
+    blocking: script
+    workflow: scope.yml
+    step: Diff stays inside the declared scope
+    note: >-
+      The only implemented gate whose class moves, and so the only one that could have proved
+      the mechanism. The script reads the tier and decides, which is what `blocking: script`
+      records — the workflow step cannot tell you the class, and inferring one from
+      continue-on-error would have inferred it wrongly.
+
+# Steps that run a command but are not checks. Listed explicitly so that "not a gate" is a
+# claim someone made, rather than the default for anything nobody got round to registering.
+not_a_gate:
+  - workflow: monthly.yml
+    step: Install dependencies
+    reason: >-
+      Installs the pinned, hash-checked requirements so the reports can run. A failure here
+      stops the job, but it asserts nothing about the repository — it is the environment, and
+      calling it a gate would make a registry outage read as a policy violation.
+
+  - workflow: hygiene.yml
+    step: Load budgets from configuration
+    reason: Reads config.yml and exports values for later steps. Asserts nothing.
+
+  - workflow: release.yml
+    step: Build the release binary
+    reason: >-
+      Compiles. A build failure stops the job, but it asserts nothing about the repository's
+      state, and calling it a gate would make every compiler error a policy violation.
+
+  - workflow: release.yml
+    step: Checksum it and record its size
+    reason: >-
+      Produces the checksum and the per-platform size Q-001 needs in order to close. It
+      measures and records; it has no threshold to fail against until Q-001 sets one.
+
+  - workflow: release.yml
+    step: Publish the release
+    reason: >-
+      Uploads artifacts that already passed the three gates above. Publishing is the
+      consequence of the gates, not one of them.
+
+  - workflow: speed.yml
+    step: Find the slowest recent pull-request run
+    reason: >-
+      Reads the duration of finished runs and exports it for the next step. Asserts nothing —
+      nothing inside a job can time the run containing it.
+
+  - workflow: review-packet.yml
+    step: Collect the diff
+    reason: Writes the diff to a file for the renderer. Asserts nothing about it.
+
+  - workflow: review-packet.yml
+    step: Run the gates the packet can run
+    reason: >-
+      Runs the gates and records what each returned, for reporting. It deliberately does not
+      judge them — the workflows that own them already do, and a second opinion that could
+      block would be a second implementation of every gate.
+
+  - workflow: review-packet.yml
+    step: Post it onto the pull request
+    reason: >-
+      Delivery. Best effort by design: a fork's token cannot comment, and the job summary is
+      already written, so this failing must not fail the job.
+
+# Checks named in the 06 §3 tier policy that do not exist yet. Carried here so the register is
+# the whole picture rather than an inventory of what happened to get built, and so M3-02 has
+# the full table to wire. Each names the task that implements it.
+planned:
+  - id: quality.coverage_changed_lines
+    class:
+      prototype: report
+      internal: ratchet
+      production: ratchet
+      regulated: contract
+    threshold: {regulated: ">=80% on changed lines"}
+    pending: M3-04
+
+  - id: quality.traceability
+    class:
+      prototype: report
+      internal: report
+      production: ratchet
+      regulated: contract
+    pending: M4-04
+
+  - id: quality.accessibility
+    class:
+      prototype: report
+      internal: ratchet
+      production: ratchet
+      regulated: contract
+    threshold: {regulated: "WCAG 2.2 AA"}
+    pending: M3-04
+
+  - id: quality.performance
+    class:
+      prototype: report
+      internal: report
+      production: ratchet
+      regulated: ratchet
+    pending: M3-04
+
+  - id: quality.doc_staleness
+    class:
+      prototype: report
+      internal: report
+      production: ratchet
+      regulated: contract
+    pending: M4-05
+
+  - id: quality.mutation_sampling
+    class:
+      prototype: none
+      internal: report
+      production: report
+      regulated: ratchet
+    pending: M3-04
+
+  - id: quality.signed_commits
+    class:
+      prototype: none
+      internal: none
+      production: ratchet
+      regulated: contract
+    pending: M5-03
+
+  - id: quality.suppression_count
+    class:
+      prototype: report
+      internal: ratchet
+      production: ratchet
+      regulated: ratchet
+    pending: M3-04
+    note: >-
+      Not a row in 06 §3 — M3-04 adds it. The cheapest available defence against an agent
+      silencing a check rather than satisfying it, and it costs one number in CI.

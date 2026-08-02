@@ -1,0 +1,7 @@
+diff --git a/pyproject.toml b/pyproject.toml
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -20,3 +20,3 @@
+ [tool.coverage.report]
+-fail_under = 60
++fail_under = 90

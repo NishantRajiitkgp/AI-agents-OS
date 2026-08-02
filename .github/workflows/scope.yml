@@ -1,0 +1,37 @@
+name: scope
+
+# Checks the diff against the declared write scope of the task it implements (04 §3.5, D-011).
+#
+# The class depends on tier (06 §3): Advisory at `prototype`, Contract from `internal` up.
+# This repository is `prototype`, so this job reports and does not block — the script decides
+# that from aios/config.yml rather than the workflow deciding it here, because a tier raised
+# in config that left the gate advisory would be a threshold that lies.
+#
+# PROVISIONAL IMPLEMENTATION, per ADR-006. Moves into `aios check` at M1-14.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  scope:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          fetch-depth: 0
+
+      # Both values go through the environment rather than being interpolated into the script.
+      # A ${{ }} expansion is substituted before the shell parses the line, and a branch name
+      # is attacker-influenced on a fork pull request.
+      - name: Diff stays inside the declared scope
+        env:
+          BASE: ${{ github.base_ref }}
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE"
+          git diff "origin/$BASE...HEAD" |
+            python3 .github/scripts/check-scope.py --branch "$BRANCH"

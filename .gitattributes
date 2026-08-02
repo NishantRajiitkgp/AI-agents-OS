@@ -1,0 +1,20 @@
+# Normalise line endings in the repository so that a checkout on Windows and one on Linux
+# produce identical blobs. Without this, every drift check and content comparison the OS
+# performs has to strip carriage returns first, and any that forgets reports a false
+# difference. The reference implementation is developed on Windows and its CI runs on
+# Linux, so this is load-bearing rather than cosmetic.
+* text=auto eol=lf
+
+# Markdown is the OS's state format. Trailing whitespace is meaningful in Markdown (two
+# spaces is a line break), so it is left alone rather than stripped.
+*.md text eol=lf
+
+# Windows-only artifacts that a shell would refuse to run with LF endings.
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binaries, once a release pipeline exists (Q-001).
+*.exe binary
+*.png binary
+*.jpg binary

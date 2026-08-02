@@ -1,0 +1,10 @@
+{
+  "name": "aios-host-project",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A scratch project in an ecosystem the OS is not written in, used to prove the ADR-013 invocation contract is callable rather than merely specified. It has no dependencies on purpose: a proof that the OS imposes no runtime must not pull in a dependency tree of its own.",
+  "scripts": {
+    "check": "node check.mjs"
+  }
+}

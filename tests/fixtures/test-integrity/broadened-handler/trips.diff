@@ -1,0 +1,10 @@
+diff --git a/tests/test_parser.py b/tests/test_parser.py
+--- a/tests/test_parser.py
++++ b/tests/test_parser.py
+@@ -4,7 +4,7 @@
+ def test_rejects_bad_input():
+     try:
+         parse("{{{")
+-    except ValueError:
++    except Exception:
+         pass

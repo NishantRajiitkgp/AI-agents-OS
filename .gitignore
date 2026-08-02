@@ -1,0 +1,43 @@
+# Build output for the reference implementation's ecosystem (ADR-005).
+/target/
+**/*.rs.bk
+
+# Bytecode from the provisional Python gates under .github/scripts/ (ADR-006). These go
+# away when the gates move into `aios check`; the entry stays until then.
+__pycache__/
+*.py[cod]
+
+# Local tool and editor state that is per-machine rather than per-project.
+.vscode/
+.idea/
+*.swp
+
+# OS noise.
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Nothing under aios/ is ignored on purpose. It is project state, not build output, and
+# an ignored state directory is a state directory that silently stops being reviewed.
+
+# Written by the feedback-speed gate in CI; a measurement, not state.
+speed.json
+
+# The active mode. Session state, not project state: committing it would make one
+# developer's mode everyone's.
+.aios-mode
+
+# Session state for autonomy: which tasks have begun without review, and which a human
+# has approved. Both are per-session, not project state.
+.aios-session
+.aios-approval
+
+# Observed test outcomes, for the three-strikes hard stop. Session state.
+.aios-attempts
+.aios-writer
+.aios-probe.json
+
+# ios board is generated. A stored view can be wrong forever; a rendered one only
+# briefly. If it is ever written to a file, that file is not the source of truth.
+board.md

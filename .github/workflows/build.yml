@@ -1,0 +1,185 @@
+name: build
+
+# The binary cannot be built on the development machine: every rust-lang.org host is filtered
+# by the network there (aios/incidents/2026-07-31-rust-toolchain-unreachable.md). CI is
+# therefore not a second opinion on the build, it is the only one. That makes the checks here
+# load-bearing in a way they would not otherwise be.
+#
+# Note what is deliberately absent: no toolchain-installing action. rustup is preinstalled on
+# the runners and reads rust-toolchain.toml on the first cargo invocation, so the pinned
+# version arrives with no setup step. Pinning it in an action as well would create a second
+# place the version lives, and two versions that can disagree is what P3 forbids. The Done-when
+# for M1-08 is precisely "runs from a clean checkout with no setup step", so a setup step here
+# would quietly falsify the thing this workflow exists to prove.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      # If this reports anything other than the pinned version, the pin is not working and
+      # every later step is measuring the wrong compiler.
+      - name: Toolchain resolves from rust-toolchain.toml, with no setup step
+        run: |
+          rustc --version
+          cargo --version
+
+      - name: Formatting
+        run: cargo fmt --check
+
+      # Warnings are denied rather than reported. A warning nobody must act on is a warning
+      # everybody learns to scroll past.
+      - name: Lints
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build
+        run: cargo build --release
+
+      # Dev profile deliberately: the release profile sets panic = "abort", which the test
+      # harness cannot link against.
+      - name: Unit tests
+        run: cargo test
+
+      - name: "Behaviour: exit codes are what the callers depend on"
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -uo pipefail
+          bin=target/release/aios
+          "$bin" --version
+          "$bin" help
+          expect() {
+            "$bin" "${@:2}" >/dev/null 2>&1
+            got=$?
+            if [ "$got" -ne "$1" ]; then
+              echo "expected exit $1 from 'aios ${*:2}', got $got"; exit 1
+            fi
+          }
+          expect 0 --version
+          expect 0 help
+          expect 2 nope           # unknown subcommand
+          expect 2                # no arguments at all is a usage error
+          expect 2 list nonsense  # not one of the six statuses
+
+          # `next` and `list` are implemented, so the assertion is about the code they must
+          # not return. 0 and 1 are both correct answers depending on the backlog; 2 means it
+          # could not read the state at all, and that is the one this must never see from
+          # inside a valid repository. Asserting 0 here would make the build depend on the
+          # backlog happening to be empty, which is a test of the wrong thing.
+          for subcommand in next list; do
+            "$bin" "$subcommand" >/dev/null 2>&1
+            got=$?
+            if [ "$got" -eq 2 ]; then
+              echo "'aios $subcommand' could not run inside its own repository"; exit 1
+            fi
+          done
+
+          # Root discovery, per ADR-013 §4: refuse outside a repository rather than guessing
+          # that the working directory is one.
+          (cd "$RUNNER_TEMP" && "$OLDPWD/$bin" next >/dev/null 2>&1; \
+            [ $? -eq 2 ] || { echo "did not refuse outside a repository"; exit 1; })
+          echo "exit codes correct"
+
+      # ADR-005 recorded "identical behaviour under PowerShell" as assumed, not verified.
+      # This is the step that changes that row, so it invokes the binary through PowerShell
+      # specifically rather than through the default shell.
+      - name: "Behaviour: identical under PowerShell (ADR-005)"
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $bin = 'target\release\aios.exe'
+          & $bin --version
+          & $bin help
+          function Expect($code, $argv) {
+            & $bin @argv *> $null
+            if ($LASTEXITCODE -ne $code) {
+              throw "expected exit $code from 'aios $argv', got $LASTEXITCODE"
+            }
+          }
+          Expect 0 @('--version')
+          Expect 0 @('help')
+          Expect 2 @('nope')
+          Expect 2 @()
+          Expect 2 @('list', 'nonsense')
+          foreach ($subcommand in @('next', 'list')) {
+            & $bin $subcommand *> $null
+            if ($LASTEXITCODE -eq 2) {
+              throw "'aios $subcommand' could not run inside its own repository"
+            }
+          }
+          Write-Host "exit codes correct under PowerShell"
+          exit 0
+
+      # ADR-005's deciding constraint was that a cloned project can invoke the binary without
+      # adopting the OS's runtime. The binary is copied away from its build tree and run with
+      # nothing beside it: if it needed a sibling library, it would fail here.
+      # M1-16. The Done-when is that a schema violation on a branch turns the build red
+      # before review, and M1-14's is that `aios check` and the CI job invoke the identical
+      # code path. Both are proven here rather than asserted.
+      #
+      # Parity first: `--list` names what the binary would run, and it must equal the `run:`
+      # steps the workflow declares. Running the whole set inside CI would prove the same
+      # thing and pay for it twice; a list comparison fails the moment the two diverge, which
+      # is the only way they can quietly stop being the same thing.
+      - name: What `aios check` would run is what CI runs
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          target/release/aios check --list hygiene.yml > /tmp/from-binary.txt
+          python3 - <<'PY' > /tmp/from-workflow.txt
+          import re, pathlib
+          text = pathlib.Path(".github/workflows/hygiene.yml").read_text(encoding="utf-8")
+          # Steps that carry a `run:`, in declaration order.
+          for block in re.split(r"\n      - ", text)[1:]:
+              name = re.search(r"name:\s*(.+)", block)
+              if name and re.search(r"^\s+run:", block, re.M):
+                  print(name.group(1).strip().strip("'\""))
+          PY
+          if ! diff -u /tmp/from-workflow.txt /tmp/from-binary.txt; then
+            echo "::error::`aios check` and hygiene.yml disagree about what runs."
+            exit 1
+          fi
+          echo "$(wc -l < /tmp/from-binary.txt) step(s), identical on both sides"
+
+      # And the behaviour: a task file that violates the schema must turn this red through
+      # the binary, not only through the workflow's own python step.
+      - name: A schema violation turns the build red through the binary
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -uo pipefail
+          broken=aios/tasks/T-ffff.md
+          printf -- '---\nid: T-ffff\nstatus: nonsense\n---\n' > "$broken"
+          target/release/aios list >/dev/null 2>&1
+          got=$?
+          rm -f "$broken"
+          if [ "$got" -ne 1 ]; then
+            echo "expected exit 1 from a malformed task file, got $got"; exit 1
+          fi
+          echo "malformed state is refused, and reported as failure rather than as could-not-run"
+
+      - name: The binary is self-contained
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/alone"
+          if [ "$RUNNER_OS" = "Windows" ]; then exe=aios.exe; else exe=aios; fi
+          cp "target/release/$exe" "$RUNNER_TEMP/alone/$exe"
+          cd "$RUNNER_TEMP/alone"
+          ./"$exe" --version
+          echo "runs with nothing beside it"

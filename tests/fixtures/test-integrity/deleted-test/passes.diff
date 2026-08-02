@@ -1,0 +1,8 @@
+diff --git a/tests/test_auth.py b/tests/test_auth.py
+--- a/tests/test_auth.py
++++ b/tests/test_auth.py
+@@ -10,7 +10,7 @@
+ 
+-def test_rejects_expired_token():
++def test_rejects_an_expired_token():
+     assert not auth.verify(expired_token)

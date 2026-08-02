@@ -1,0 +1,168 @@
+﻿# Ratchet baselines — the current value of each metric, which may not get worse.
+#
+# A ratchet permits what the repository already is and forbids it worsening. That is why it is
+# the class that solves the threshold problem: always satisfiable, never blocks a good change,
+# improves monotonically. Nobody has to defend the number, because nobody chose it.
+#
+# Every baseline here was measured, not picked. A baseline set to an aspiration is a Contract
+# gate wearing a ratchet's name, and it blocks work on day one.
+#
+# **A baseline may only move in the improving direction.** Loosening one is the entire evasion
+# — it is the single edit a regression needs, and it looks like ordinary configuration. So it
+# is compared against the committed value and rejected, rather than left to review to notice
+# that a number got bigger. This file is a protected path as well; that is the second layer,
+# not the first.
+#
+# Metrics are measured in check-ratchets.py, in code. A definition here cannot supply a command
+# to run: the measurement must not be the thing under the agent's control.
+
+ratchets:
+  - id: always_on_lines
+    title: Lines loaded on every turn — ADR-010's four contributors, measured as a set
+    direction: lower_is_better
+    baseline: 153
+    raised:
+      from: 143
+      reason: >-
+        Ten lines, five each, for the explorer and verifier descriptions — resident on every
+        turn (ADR-010). They buy the two mechanisms D-024 keeps: search output kept out of the
+        main context, and review by an invocation with no memory of writing the code, which
+        catches materially more than the author re-reading it (01: 3.4). Recorded as one move
+        because both landed before any commit existed to compare against; M4-01 and M4-02 in
+        task.md carry the halves. D-024's revisit trigger returns these lines if
+        findings-per-review trends to zero.
+    note: >-
+      ADR-011 caps this at 200, which is a Contract gate and a different control. The cap stops
+      the budget being blown; this stops it being crept up to. A repository sitting at 199 has
+      satisfied the cap and lost the headroom the cap existed to protect.
+
+  - id: agents_md_lines
+    title: Lines in AGENTS.md
+    direction: lower_is_better
+    baseline: 118
+    raised:
+      from: 117
+      reason: >-
+        The same row. Both metrics move together whenever AGENTS.md does, which is the point
+        of having both: this one is the sub-budget ADR-011 reserves, and it moving alone would
+        mean a rule file had shrunk to pay for it.
+
+  - id: root_markdown_files
+    title: Markdown files at the repository root
+    direction: lower_is_better
+    baseline: 4
+    note: >-
+      Capped at 5 by a Contract gate. The ratchet is what stops the fifth slot being spent
+      casually, since the cap alone says nothing until it is already gone.
+
+  - id: todo_markers
+    title: Deferred-work markers in tracked code
+    direction: lower_is_better
+    baseline: 1
+    note: >-
+      Counted in code files only. Writing the marker words into the document that explains
+      this ratchet raised it by eight, which is a metric measuring its own documentation. A
+      marker in code is debt; the same word in a design note is a sentence, and a count that
+      cannot tell them apart teaches people to avoid the vocabulary rather than the debt.
+
+  - id: suppressions
+    title: Linter and type-checker suppressions in tracked code
+    direction: lower_is_better
+    baseline: 4
+    note: >-
+      The cheapest available defence against an agent silencing a check rather than satisfying
+      it, and it costs one number in CI. An agent that cannot add a suppression without the
+      count rising has to argue for it in review.
+
+      It also caught the thing it was built to catch, pointed at its own repository. This was
+      raised 10 → 12 at M3-06 with a reason arguing the cost was structural and unavoidable.
+      M3-07 needed the same raise again, and twice for one cause is the bypass pattern the
+      demotion rule exists to name. Re-examined instead of raised: every gate script carried
+      `sys.path.insert(__file__'s parent)` before its imports, and Python already puts a
+      script's own directory at sys.path[0], so the line was redundant and the E402
+      suppressions existed only to permit a line that did nothing. Removing both from nine
+      scripts took the count to 4. The four that remain are regex patterns that *detect*
+      suppressions, so the true count is zero.
+
+  - id: gates_registered
+    title: Checks registered in aios/gates.yml
+    direction: higher_is_better
+    baseline: 56
+    note: >-
+      Deleting a check is the quietest way to stop it failing, and every other control here
+      assumes the checks still exist. The gate registry proves each check declares a class; it
+      cannot notice one that is simply gone. This can.
+
+  - id: tests_declared
+    title: Test functions declared under tests/
+    direction: higher_is_better
+    baseline: 785
+    note: >-
+      Counted from source rather than from a run, so skipping a test does not move it — that
+      is the test-integrity audit's job, and these are deliberately different failures. The
+      audit reads a diff and can only see what a pull request contains; this reads the tree
+      and notices a suite that shrank by any route.
+
+# Metrics the design names that cannot be measured here yet. Each says which task wires it,
+# because the difference between "cannot be measured yet" and "nobody got round to it" is
+# otherwise invisible, and the second is what a missing ratchet usually is. A metric listed
+# here that turns out to be measurable already fails the check.
+planned:
+  - id: coverage_changed_lines
+    direction: higher_is_better
+    pending: M1-08
+    reason: >-
+      Needs a compiled binary to instrument and a test suite that runs against it. The Rust
+      toolchain is unreachable from this network, so nothing can be compiled locally at all.
+      The provisional Python gates are exercised through subprocesses, which stdlib tracing
+      does not follow, so a number measured today would be near zero and would be measuring
+      the harness rather than the code.
+
+  - id: artifact_size
+    direction: lower_is_better
+    pending: M1-08
+    reason: >-
+      There is no shipped artifact until the binary builds. 06 §3 scopes this to ecosystems
+      with a meaningful notion of one, and a repository of scripts does not have one.
+
+  - id: p95_latency
+    direction: lower_is_better
+    pending: M1-08
+    reason: >-
+      Product latency, which needs a binary with benchmarked paths to have any. Distinct from
+      the feedback-speed budgets M3-10 wired: those measure how long the checks take, this
+      measures how long the thing being built takes, and only the first exists today.
+
+  - id: pre_commit_seconds
+    direction: lower_is_better
+    pending: M3-10-ci
+    reason: >-
+      Measured, and within budget at 2.5s against 5s — but measured on Windows, where spawning
+      a process costs several times what it costs on the Linux runner CI uses. A baseline taken
+      here would be a baseline for a machine CI is not, and every comparison against it would
+      be measuring the wrong computer. The first CI run records it.
+
+  - id: check_seconds
+    direction: lower_is_better
+    pending: M3-10-ci
+    reason: >-
+      Same reason, and more sharply: the local number is dominated by process-creation cost
+      that CI does not pay. Recorded here so the overrun is not lost — 366s serial, then 164s
+      to 225s sharded, against a 60s budget. That spread is the same suite on the same machine
+      minutes apart, and it is why the ratchet tier needs a tolerance to be worth having.
+
+  - id: ci_pr_seconds
+    direction: lower_is_better
+    pending: M3-10-ci
+    reason: >-
+      Nothing outside Actions can time an Actions job. The workflow reports its own duration,
+      so this baseline exists after the first pull request and not before.
+
+# Metrics the design names that do not apply to this repository at all. Distinct from planned:
+# no task will ever wire these, and recording that is what stops them being re-proposed.
+not_applicable:
+  - id: accessibility_violations
+    reason: >-
+      This repository ships a command-line binary and Markdown. There are no views, so there
+      is nothing to scan and no changed view a violation could be attributed to. A cloned
+      project with a user interface wires this; the OS itself never will.

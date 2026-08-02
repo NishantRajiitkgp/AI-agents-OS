@@ -1,0 +1,66 @@
+name: monthly
+
+# The reports that judge the system rather than the change.
+#
+# Everything here is Report class and every step carries continue-on-error. That is not
+# timidity — it is the defining property of the set. These measure whether the OS is earning
+# its keep, what has gone stale, which checks nobody reads, and whether the verifier is worth
+# its context. Each of those questions has answers where the right response is to change the
+# rule rather than the code, and a gate that blocked on them would train people to satisfy the
+# number instead: one throwaway test per requirement, an advisory switched off rather than
+# fixed, a stale document deleted rather than reviewed.
+#
+# Monthly rather than per-commit because none of these moves on one change. Running them on
+# every pull request would produce a number that is noise at that resolution and a warning
+# everyone learns to scroll past — which is precisely the failure the advisory-deletion
+# counter below exists to catch.
+#
+# workflow_dispatch is here because a report nobody can run on demand is a report nobody reads
+# between schedules.
+
+on:
+  schedule:
+    # 07:00 UTC on the first of the month. A fixed day rather than a rolling window, so two
+    # consecutive reports are comparable without arithmetic.
+    - cron: "0 7 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          # The health and prune reports read git history to find what has stopped moving.
+          # A shallow clone would report a young, tidy repository regardless of the truth.
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: python3 -m pip install --require-hashes -r requirements.txt
+
+      - name: Is the OS earning its keep
+        continue-on-error: true
+        run: python3 .github/scripts/report-health.py
+
+      - name: What could be deleted
+        continue-on-error: true
+        run: python3 .github/scripts/propose-prune.py
+
+      - name: Review debt
+        continue-on-error: true
+        run: python3 .github/scripts/check-review-debt.py
+
+      - name: What changed in the template
+        continue-on-error: true
+        run: python3 .github/scripts/check-upgrade.py
+
+      - name: Advisory checks nobody acts on
+        continue-on-error: true
+        run: python3 .github/scripts/check-advisory-deletion.py
+
+      - name: Is the verifier worth its context
+        continue-on-error: true
+        run: python3 .github/scripts/measure-verifier.py

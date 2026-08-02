@@ -1,0 +1,88 @@
+name: Review packet
+
+# 08 §2.2. A Report, not a gate: it never fails on what it describes. A packet that can block
+# is a second, worse copy of the gates it reports on, and one that goes red for the same reason
+# twice teaches people to skim both.
+#
+# `pull_request`, deliberately not `pull_request_target`. The latter would run with a writable
+# token against code from the pull request, which is the exact shape 07 §1.3 warns about — the
+# packet renders task prose and file paths from the branch, and rendering attacker-controlled
+# text with a privileged token is how a reporting job becomes an exfiltration primitive.
+#
+# The cost is that a pull request from a fork gets a read-only token and the comment cannot be
+# posted. That is why the job summary is written first and unconditionally: the summary always
+# exists, and the comment is the convenience on top. A packet that only appears when the token
+# is generous is a packet nobody can rely on.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  packet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          fetch-depth: 0
+
+      - name: Collect the diff
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE"
+          git diff "origin/$BASE...HEAD" > packet.diff
+
+      # build.yml is excluded by name rather than by listing its gates, so the exclusion
+      # cannot drift as gates are added. Its results belong to the build job; claiming a build
+      # failure in a job that never tried to build would be worse than reporting nothing.
+      - name: Run the gates the packet can run
+        continue-on-error: true
+        run: |
+          python3 .github/scripts/run-gates.py \
+            --skip-workflow build.yml \
+            --skip-workflow sast.yml \
+            --out results.json
+
+      # continue-on-error is what makes this a Report, and the gate registry checks that this
+      # field and the declared class agree. A Report that could fail the job would be a
+      # Contract gate wearing the wrong label.
+      - name: Render the review packet
+        continue-on-error: true
+        env:
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          python3 .github/scripts/render-review-packet.py \
+            --diff packet.diff \
+            --branch "$BRANCH" \
+            --results results.json \
+            --out packet.md
+          cat packet.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Best effort by design. It fails for a fork's read-only token, and the summary above is
+      # already written, so failing here must not fail the job.
+      - name: Post it onto the pull request
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          marker='<!-- aios-review-packet -->'
+          printf '%s\n' "$marker" | cat - packet.md > body.md
+          # One comment, edited in place. A packet appended on every push buries the current
+          # state under stale copies of itself, which is the failure mode of every bot that
+          # comments per run.
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${NUMBER}/comments" \
+            --jq "[.[] | select(.body | startswith(\"${marker}\"))] | .[0].id // empty")
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" \
+              -F body=@body.md >/dev/null
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${NUMBER}/comments" \
+              -F body=@body.md >/dev/null
+          fi

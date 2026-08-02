@@ -1,0 +1,35 @@
+name: Supply chain audit
+
+# Nightly rather than per-pull-request, and Advisory rather than Contract, for one reason:
+# this step reaches the network. A Contract gate that queries a registry fails on somebody
+# else's outage, and a gate that fails for reasons unrelated to the change is one people learn
+# to re-run rather than read — which is how a gate becomes noise while still looking green.
+#
+# The structural checks that need no network are Contract, and run on every pull request in
+# hygiene.yml. This adds only what the registry alone can answer: whether the package exists,
+# whether it is as old as it claims, and whether anything has since been disclosed against it.
+#
+# The disclosure half is why nightly is the right period rather than a weaker version of
+# per-commit. A vulnerability appears without anybody touching this repository, so a check
+# that only ran when something changed would be silent on the day it mattered most.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      # continue-on-error is what makes this Advisory, and the gate registry checks that the
+      # declared class and this field agree. Removing it here without changing the class in
+      # aios/gates.yml fails the registry gate.
+      - name: Every dependency exists, is old enough, and has no known vulnerability
+        continue-on-error: true
+        run: python3 .github/scripts/check-dependencies.py --online

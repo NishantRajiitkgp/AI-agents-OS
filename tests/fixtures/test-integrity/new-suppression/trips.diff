@@ -1,0 +1,7 @@
+diff --git a/src/payments.py b/src/payments.py
+--- a/src/payments.py
++++ b/src/payments.py
+@@ -8,3 +8,3 @@
+ def settle(order):
+-    total = compute(order)
++    total = compute(order)  # type: ignore[arg-type]

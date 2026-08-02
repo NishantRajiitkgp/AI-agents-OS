@@ -1,0 +1,12 @@
+diff --git a/tests/test_pricing.py b/tests/test_pricing.py
+--- a/tests/test_pricing.py
++++ b/tests/test_pricing.py
+@@ -1,5 +1,9 @@
++from unittest.mock import patch
+ 
+ def test_price_lookup():
+     self.assertEqual(pricing.lookup("A1"), 42)
++
++def test_price_lookup_calls_the_remote_once():
++    with patch("pricing.http_get") as get:
++        self.assertEqual(get.call_count, 1)

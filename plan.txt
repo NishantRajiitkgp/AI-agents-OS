@@ -1,0 +1,280 @@
+# AI Engineering OS Research & Implementation Mission
+
+## Objective
+
+You are **NOT** here to immediately write code.
+
+Your first responsibility is to behave like a **Principal Software Engineer, Staff Engineer, Engineering Manager, Solutions Architect, and AI Systems Researcher**.
+
+Your mission is to design and build the **best possible AI Engineering Operating System** for production software development.
+
+This repository is intended to become a reusable template that can be cloned before starting any new software project. Every future project will inherit its architecture, workflows, documentation structure, engineering standards, AI rules, quality gates, and project memory.
+
+Do **not** assume the ideas in this document are final. Treat them as hypotheses. Research, challenge, improve, replace, or remove anything if you find a better approach.
+
+---
+
+# Phase 1: Research First
+
+Before creating any implementation, perform extensive research.
+
+Research topics include, but are not limited to:
+
+* AI coding workflows
+* Multi-agent software engineering
+* Claude Code best practices
+* Cursor best practices
+* AGENTS.md standards
+* AI repository memory systems
+* Architecture Decision Records (ADR)
+* Engineering documentation standards
+* Engineering governance
+* Software development lifecycle
+* Production engineering workflows
+* Project planning systems
+* Task decomposition
+* Engineering checklists
+* GitHub engineering practices
+* Google engineering practices
+* Stripe engineering practices
+* Netflix engineering practices
+* Uber engineering practices
+* Microsoft engineering playbooks
+* Software architecture documentation
+* Technical debt management
+* Incident management
+* Root cause analysis
+* Secure software development lifecycle
+* Production readiness checklists
+* Code review workflows
+* Testing strategies
+* Quality gates
+* CI/CD best practices
+* AI context management
+* Persistent project memory for coding agents
+
+Study existing open-source repositories and modern AI engineering frameworks wherever applicable.
+
+Never assume the first solution is the best one.
+
+---
+
+# Your Responsibilities
+
+Your goal is to design the operating system that every future AI coding session will follow.
+
+This system should:
+
+* Minimize hallucinations
+* Prevent architectural drift
+* Prevent inconsistent implementations
+* Prevent duplicate code
+* Preserve long-term project memory
+* Scale from MVP to enterprise systems
+* Produce production-ready software
+* Be understandable by both humans and AI agents
+
+Think of this as building an operating system for software engineering, not just a project template.
+
+---
+
+# Project Philosophy
+
+The AI should never randomly decide what to build.
+
+Instead, every decision should be driven by documented project state.
+
+The repository should always answer:
+
+* What are we building?
+* Why are we building it?
+* What has already been completed?
+* What is currently in progress?
+* What should be built next?
+* What mistakes have already happened?
+* Why were architectural decisions made?
+* What rules must never be violated?
+
+If this information is missing, the AI must create or update it before continuing development.
+
+---
+
+# Status System
+
+One of the core components of this repository is the Status System.
+
+Research whether this is the optimal design.
+
+If you discover a better structure, improve it.
+
+Possible files include:
+
+status/
+
+* backlog.md
+* in-progress.md
+* completed.md
+* decisions.md
+* incidents.md
+* context.md
+
+Do not blindly accept these names.
+
+Research industry practices and design the best possible structure.
+
+---
+
+# Task Management
+
+One major goal is deterministic development.
+
+The AI should never invent work.
+
+Instead, it should always determine the next implementation step from the documented project state.
+
+Research whether task management should include:
+
+* Epics
+* Features
+* Tasks
+* Subtasks
+* Dependencies
+* Priorities
+* Acceptance criteria
+* Risk level
+* Estimated complexity
+* Current status
+* Blockers
+
+Determine the best structure.
+
+---
+
+# Human Workflow
+
+The intended workflow is:
+
+1. Clone this repository.
+2. Add project requirements.
+3. Allow the AI to analyze requirements.
+4. AI generates architecture.
+5. AI generates implementation roadmap.
+6. AI generates task hierarchy.
+7. Human reviews.
+8. Human simply types:
+
+Next
+
+The AI should:
+
+* Determine the next available task.
+* Verify prerequisites.
+* Implement only that task.
+* Update project state.
+* Stop.
+* Wait for the next "Next" command.
+
+Research whether this workflow can be improved.
+
+---
+
+# Documentation
+
+Research what documentation should exist before any code is written.
+
+Possible documentation includes:
+
+* Product Requirements
+* Functional Requirements
+* Non-functional Requirements
+* Architecture
+* Database Design
+* API Contracts
+* Security
+* Deployment
+* Testing
+* Coding Standards
+* ADRs
+* Runbooks
+* Monitoring
+* Observability
+
+Recommend additional documentation where necessary.
+
+---
+
+# Quality Gates
+
+Every implementation should satisfy production-quality standards.
+
+Research appropriate quality gates, including:
+
+* Security
+* Performance
+* Accessibility
+* Testing
+* Documentation
+* Maintainability
+* Static analysis
+* Complexity
+* Logging
+* Error handling
+* Observability
+
+Determine whether implementation should stop automatically when quality gates fail.
+
+---
+
+# AI Agent Rules
+
+Research how AI agents should collaborate.
+
+Determine:
+
+* Which documents every agent must read before writing code.
+* Which files an agent is allowed to modify.
+* Which files are read-only.
+* Whether multiple specialized agents should exist.
+* Whether a project manager agent should coordinate development.
+* How project memory should be updated safely.
+
+---
+
+# Deliverables
+
+Do not start implementation immediately.
+
+Instead, produce a complete engineering plan.
+
+The plan should include:
+
+1. Repository structure
+2. Folder hierarchy
+3. Documentation architecture
+4. Status system
+5. Task management system
+6. Agent workflow
+7. Human workflow
+8. AI workflow
+9. Quality gates
+10. Engineering standards
+11. Review process
+12. Security model
+13. Testing strategy
+14. Deployment workflow
+15. Long-term maintenance strategy
+
+For every design decision:
+
+* Explain why it exists.
+* Explain alternatives considered.
+* Explain trade-offs.
+* Recommend the best approach.
+
+Challenge every assumption, including those written in this document.
+
+The final result should resemble a production engineering operating system that could be adopted by elite software teams.
+
+Do not optimize for speed.
+
+Optimize for correctness, maintainability, scalability, developer experience, and long-term project quality.

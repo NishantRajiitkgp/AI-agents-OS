@@ -1,0 +1,37 @@
+# Gates demoted because they were being overridden routinely, and gates that crossed the
+# threshold but are exempt from demotion.
+#
+# D-017: three overrides of one Contract gate in thirty days demotes it to Ratchet and files a
+# report. The reasoning is that a gate overridden that often is *already* not blocking — it is
+# blocking dishonestly, and teaching everyone that overrides are routine, which is what erodes
+# the gates that matter. Demoting it makes the truth explicit.
+#
+# The window is any thirty-day span anchored at an override's own date, not the thirty days
+# before today. A gate that would demote on Tuesday and not on Wednesday, with nobody having
+# changed anything, is a gate whose verdict depends on when CI happened to run.
+#
+# Nothing here is written by hand. `check-demotions.py --apply` produces the entry and flips
+# the class in aios/gates.yml; a human commits it and later closes the report. That split is
+# the point of D-017: the demotion is automatic, and it is still a reviewable commit.
+#
+# Empty because no gate has been overridden even once. This file exists ahead of need so that
+# the first demotion is a data change rather than a design decision taken under pressure.
+
+demotions: []
+
+# Gates in the security subset (07) never demote — an important control does not become
+# optional because it is inconvenient. Crossing the threshold still lands here, because
+# exemption from demotion is not exemption from being noticed: an exempt gate overridden three
+# times is a signal that either the gate or the code is wrong, and somebody has to look.
+exempt_crossings: []
+
+planned:
+  - id: advisory_deletion
+    pending: M3-12
+    reason: >-
+      "Any Advisory check ignored 20 times in a row is deleted" (06 §2) counts consecutive CI
+      runs in which a finding was reported and nothing changed. That needs run history, and
+      this repository has no CI runs yet — the first commit has not been pushed. Implementing
+      it now would mean inventing the history it reads, which is the one thing a counter must
+      not do. Deferred once from M3-08 and once from M3-10; M3-12 anchors it to the
+      precondition rather than to a milestone, because no milestone produces run history.

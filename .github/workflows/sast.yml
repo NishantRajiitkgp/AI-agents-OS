@@ -1,0 +1,50 @@
+name: SAST
+
+# Static analysis, Advisory at this tier and rising to Contract at production (06 §3). The
+# class is declared in aios/gates.yml and produced here by continue-on-error; the gate registry
+# checks the two agree, so removing the flag without changing the class fails the build.
+#
+# Python only, and that is the honest scope rather than a limitation glossed over. The Rust
+# tree is a 143-line dispatch skeleton that cannot be compiled on this network, and CodeQL's
+# Rust support is newer than its Python support. Every line of logic that currently decides
+# whether this repository is valid is Python, so Python is where analysis is worth running.
+# Rust joins when the binary exists (M1-08).
+
+on:
+  pull_request:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - uses: github/codeql-action/init@bce182f857edf1feab116e9795a3393d21977282  # v4
+        with:
+          languages: python
+          # security-extended over the default: the default suite is tuned for a low false
+          # positive rate on application code, and this repository is almost entirely
+          # subprocess execution, path handling and regex — the areas the extended queries
+          # cover and the default ones deliberately skip.
+          queries: security-extended
+
+      # Uploads to the security tab regardless. It never fails the job itself, because what a
+      # finding costs is a tier question and this step cannot answer one.
+      - uses: github/codeql-action/analyze@bce182f857edf1feab116e9795a3393d21977282  # v4
+        continue-on-error: true
+        with:
+          category: /language:python
+          output: sarif
+          upload: always
+
+      # This is the gate. It reads the tier and decides: report at prototype, ratchet at
+      # internal, block at production and above.
+      - name: High-severity static analysis findings
+        run: python3 .github/scripts/check-sast.py --sarif sarif/python.sarif

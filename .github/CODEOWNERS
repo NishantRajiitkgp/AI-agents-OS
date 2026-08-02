@@ -1,0 +1,51 @@
+# Owners of the paths the agent may not write (M2-01).
+#
+# This is the only one of the three layers that is a real control. The tool-layer deny list
+# and the local git hooks are convenience: both live on the machine of the party they
+# constrain, and either can be removed by that party in one command. This file is enforced by
+# GitHub, server-side, against a branch protection rule the committer cannot edit from a
+# branch. Everything else in the protected-paths design is downstream of that one property.
+#
+# It does nothing on its own. CODEOWNERS is inert until "Require review from Code Owners" is
+# switched on for the default branch, which is M2-02 and which cannot be done from a
+# repository that has not been pushed. Until then this file is a statement of intent, and
+# check-codeowners.py exists so that intent cannot quietly be mistaken for enforcement.
+#
+# Syntax note: these are gitignore-style patterns, not the fnmatch patterns in
+# aios/config.yml. A trailing slash means the directory and everything under it. The mapping
+# between the two lists is checked, because two lists of protected paths that drift apart
+# leave the gap exactly where nobody is looking.
+
+# --- The grader ---------------------------------------------------------------------------
+# CI definitions and the gate scripts they run. An agent that can edit these can edit its own
+# examiner, which is the failure the whole protected set exists to prevent.
+/.github/                       @NishantRajiitkgp
+
+# CODEOWNERS itself. Without this line the file grants the power to remove itself.
+/.github/CODEOWNERS             @NishantRajiitkgp
+
+# --- The rules -----------------------------------------------------------------------------
+# Configuration is where a gate's severity, the deny list and the protected set are declared.
+# Editing it is editing every check at once.
+/aios/config.yml                @NishantRajiitkgp
+/aios/config.schema.yml         @NishantRajiitkgp
+/aios/gates.yml                 @NishantRajiitkgp
+/aios/ratchets.yml              @NishantRajiitkgp
+/aios/demotions.yml             @NishantRajiitkgp
+
+# The CLI and the hook scripts — the implementation of the checks themselves.
+/aios/bin/                      @NishantRajiitkgp
+
+# --- The evidence --------------------------------------------------------------------------
+# Tests carry the same review weight as the code they cover, and belong in the same pull
+# request. What this prevents is not a bad test; it is a passing test amended three weeks
+# later to make a failure go away.
+/tests/                         @NishantRajiitkgp
+*_test.*                        @NishantRajiitkgp
+*.test.*                        @NishantRajiitkgp
+
+# Lint, type-check and lockfile configuration. Loosening a linter is indistinguishable in a
+# diff from fixing the code it complained about, and lockfiles are where a supply-chain
+# substitution arrives.
+/requirements.txt               @NishantRajiitkgp
+/aios/dependencies.yml          @NishantRajiitkgp

@@ -1,0 +1,333 @@
+# Schema for `aios/config.yml`.
+#
+# This is deliberately not JSON Schema. JSON Schema can describe a key's shape but has no way
+# to require that every key carries a documented effect, and that requirement is the whole
+# point: a key nothing reads is not configuration, it is decoration that looks like a control.
+#
+# Every entry must declare `effect`, and exactly one of:
+#   enforced_by — the check that reads this key today, named so it can be found
+#   pending     — the task ID that will make it read, for a key declared before its reader
+#
+# `pending` is the honest state for a key the design names but no code consumes yet. What it
+# prevents is the alternative: inert keys accumulating anonymously until nobody can tell which
+# ones do anything.
+#
+# The validator is `.github/scripts/validate-config.py`. Both this file and `aios/config.yml`
+# are in the protected set, because a threshold the graded party can edit is not a threshold.
+
+keys:
+  template_version:
+    type: string
+    pattern: '^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$'
+    effect: >-
+      Selects which entries of the template changelog `aios upgrade` reports as applicable to
+      this project. Projects pin a version and may decline any change.
+    pending: M5-10
+
+  tier:
+    type: string
+    enum: [prototype, internal, production, regulated]
+    effect: >-
+      Sets each check's class, and so which failures block a merge and how much autonomy an
+      agent has. The gate set is identical across tiers; only the class assignment changes, so
+      raising the tier is a one-line change rather than a migration. This is the single key the
+      whole 06 §3 table resolves against: every gate in aios/gates.yml declares its class per
+      tier, and a gate whose class moves must be enforced by a script rather than a static
+      workflow step, because a static step cannot follow the tier.
+    enforced_by: 'hygiene.yml step "Every check declares a class"'
+
+  paths.state_dir:
+    type: string
+    pattern: '^[A-Za-z0-9._-]+$'
+    effect: >-
+      Directory the CLI reads project state from. Exists as a key so that a project which
+      dislikes the name `aios/` changes it once rather than in every path the tooling knows.
+      Renaming it here moves where the requirement validator looks, which is what makes it a
+      real indirection rather than a label.
+    enforced_by: 'hygiene.yml step "Requirement area files conform to the schema"'
+
+  budgets.always_on_lines:
+    type: integer
+    min: 1
+    effect: >-
+      Ceiling on the total always-on context: AGENTS.md, every alwaysApply rule, and every
+      skill and subagent description. Exceeding it fails the build, so a new addition has to
+      displace an existing one. Set against the measured set by ADR-011.
+    enforced_by: 'hygiene.yml step "Always-on context is within budget"'
+
+  budgets.agents_md_lines:
+    type: integer
+    min: 1
+    effect: >-
+      Sub-budget within always_on_lines, reserved for AGENTS.md alone. Kept separate so that
+      AGENTS.md cannot absorb the whole allowance and leave nothing for the other three
+      sources.
+    enforced_by: 'hygiene.yml step "Always-on context is within budget"'
+
+  template.version:
+    type: string
+    effect: >-
+      The template version this project is pinned to. `aios upgrade` reports what changed
+      above it, classified mechanical or judgement; nothing is applied without a human, and a
+      project may decline any change permanently.
+    pending: M1-08
+
+  review_debt.window:
+    type: integer
+    min: 1
+    effect: >-
+      How many recent reviews the review-debt measure looks at. Smaller reacts faster and is
+      noisier; larger takes longer to notice a reviewer who has stopped reading.
+    pending: M6-02
+
+  review_debt.max_uncommented_percent:
+    type: integer
+    min: 0
+    max: 100
+    effect: >-
+      Percentage of recent reviews that may be approvals carrying no comment. Past it, `aios
+      next` refuses to hand out work and reports review as the bottleneck. The time-based half
+      of this control was dropped by ADR-014 as unmeasurable.
+    pending: M6-02
+
+  review_debt.max_diff_lines:
+    type: integer
+    min: 1
+    effect: >-
+      Lines of diff put in front of one reviewer before it is reported as oversized. Reading
+      does not scale linearly with lines, so the budget is on the diff, not the reader.
+    pending: M6-02
+
+  budgets.growth_window_commits:
+    type: integer
+    min: 1
+    effect: >-
+      How far back the always-on growth ratchet looks. The set may not be larger than it was
+      this many commits ago, with the comparison read from git history rather than from a
+      checked-in baseline the same commit could raise. Growth past it needs a `Grow-context:`
+      trailer carrying a reason.
+    enforced_by: 'hygiene.yml step "Always-on context has not grown"'
+
+  budgets.root_markdown_files:
+    type: integer
+    min: 1
+    effect: >-
+      Ceiling on markdown files at the repository root. Root files are the most expensive real
+      estate in the repository because everything scans them; the cap prevents drift toward
+      CONTRIBUTING, ARCHITECTURE, STYLE and TODO accumulating there.
+    enforced_by: 'hygiene.yml step "Root markdown file count is within cap"'
+
+  budgets.task_file_lines:
+    type: integer
+    min: 1
+    effect: >-
+      Ceiling on a single task file. Holds the two-level model in place: past this a task is
+      really two tasks, or it is carrying context that belongs in a requirement or an ADR
+      where it can be read once rather than re-read per task.
+    enforced_by: 'hygiene.yml step "Task files conform to the schema"'
+
+  budgets.check_seconds:
+    type: integer
+    min: 1
+    effect: >-
+      Wall-clock ceiling for a local `aios check` run. Past it, contributors route around the
+      check, which is the bypass behaviour the gate layer exists to prevent. When it is
+      exceeded the budget is what gets defended and the build is what gets fixed.
+    enforced_by: speed.yml step "Feedback-speed budgets"
+
+  budgets.pre_commit_seconds:
+    type: integer
+    min: 1
+    effect: >-
+      Wall-clock ceiling for the pre-commit hook. Five seconds is the point past which a hook
+      stops feeling like part of committing and starts feeling like waiting, and a hook people
+      resent is a hook they pass --no-verify to.
+    enforced_by: speed.yml step "Feedback-speed budgets"
+
+  budgets.ci_pr_seconds:
+    type: integer
+    min: 1
+    effect: >-
+      Wall-clock ceiling for the whole pull-request run, measured from the job that reports it.
+      Fast feedback is one of the capabilities that flips AI's effect on stability from
+      negative to positive, which makes this a requirement rather than an optimisation.
+    enforced_by: speed.yml step "Feedback-speed budgets"
+
+  gates.demote_contract_after_overrides:
+    type: integer
+    min: 1
+    effect: >-
+      Number of overrides inside the window after which a Contract gate is automatically
+      demoted to Ratchet and a report is filed. A gate overridden this often is already not
+      blocking; demotion makes that explicit instead of letting overrides become normal.
+    pending: M3-08
+
+  gates.demote_contract_window_days:
+    type: integer
+    min: 1
+    effect: >-
+      Length of the window the override count above is measured over.
+    pending: M3-08
+
+  gates.delete_advisory_after_ignored:
+    type: integer
+    min: 1
+    effect: >-
+      Number of consecutive times an Advisory check may be ignored before it is deleted.
+      Adoption of static analysis depends on the effective false-positive rate, so a check
+      nobody acts on is removed rather than left to train people to ignore checks.
+    pending: M3-12
+
+  autonomy.chain_limit:
+    type: integer
+    min: 1
+    effect: >-
+      How many tasks an A2 chain may take before stopping for review. A2 exists so trivial work
+      does not consume the review attention non-trivial work needs; the limit is what stops that
+      argument from justifying an unbounded chain, since review effectiveness collapses with
+      diff size. Any Contract failure ends the chain earlier regardless.
+    enforced_by: 'hygiene.yml step "Autonomy levels resolve and hold their invariants"'
+
+  autonomy.stop_after_failed_attempts:
+    type: integer
+    min: 1
+    effect: >-
+      How many times one test may fail, without passing in between, before writing stops. The
+      stop converts an invisible failure mode into an explicit report at the exact moment the
+      incentive to weaken the test appears. Counted by observing test output rather than from
+      anything the agent says about itself, because that is the moment self-reporting is worth
+      least.
+    enforced_by: 'hygiene.yml step "Validators reject what they claim to reject"'
+
+  autonomy.levels:
+    type: list
+    item_type: string
+    effect: >-
+      The task-risk-by-project-tier table from 05 §4, one entry per tier, as
+      `<tier>: low=<level> medium=<level> high=<level>`. Read to decide how many tasks may
+      begin without a human. Held as four readable rows rather than twelve keys because the
+      thing being checked is the table's shape against its source, and a reader cannot do that
+      against a flattened list.
+    enforced_by: 'hygiene.yml step "Autonomy levels resolve and hold their invariants"'
+
+  # The four mode entries are read by the preToolUse hook at aios/bin/hooks/check-mode.py,
+  # which refuses a write the active mode does not permit. Like deny_commands, they are
+  # enforced in the client and are therefore Advisory by classification (ADR-012): a mode is
+  # chosen locally and can be changed locally, so it disciplines the run rather than
+  # containing it. What actually blocks a merge is the scope gate in CI, which re-checks the
+  # same `touches` server-side. `enforced_by` names the CI step that keeps the hook honest,
+  # because that is the part of this a pull request can fail.
+
+  modes.explore.writes:
+    type: list
+    item_type: string
+    effect: >-
+      Paths the explore mode may write to. Empty, which is the mode's whole point: reading and
+      searching cannot leave a trace, so an exploration cannot quietly become a change.
+    enforced_by: 'hygiene.yml step "Validators reject what they claim to reject"'
+
+  modes.plan.writes:
+    type: list
+    item_type: string
+    effect: >-
+      Paths the plan mode may write to — task files, requirements, and the open-questions list.
+      Never source. Planning that edits code is not planning, and the separation is what makes
+      a plan reviewable before it costs anything.
+    enforced_by: 'hygiene.yml step "Validators reject what they claim to reject"'
+
+  modes.implement.writes:
+    type: string
+    enum: [touches]
+    effect: >-
+      The literal `touches`, meaning the active task's declared scope rather than a fixed list.
+      This is the only mode whose permitted set is not knowable until a task is named, and the
+      refusal when none is named is deliberate: an implement mode with no task would otherwise
+      permit everything, which is the opposite of what selecting it means. The same globs are
+      re-checked in CI by the scope gate, so this mode is the fast half of a control whose
+      blocking half is server-side.
+    enforced_by: 'hygiene.yml step "Validators reject what they claim to reject"'
+
+  modes.verify.writes:
+    type: list
+    item_type: string
+    effect: >-
+      Paths the verify mode may write to. Empty, matching the verifier subagent: a reviewer
+      that can edit the thing it reviews stops being a second opinion.
+    enforced_by: 'hygiene.yml step "Validators reject what they claim to reject"'
+
+  parallelism.max_tier:
+    type: string
+    enum: [prototype, internal, production, regulated]
+    effect: >-
+      The highest tier at which two writing agents may run in separate worktrees. Read before
+      dispatch, alongside a pairwise check that their declared `touches` cannot match a common
+      path. The declaration is what makes parallel work checkable at all; without it there is
+      no way to know two tasks will not collide, which is how every "just run five agents"
+      workflow arrives at a merge disaster.
+    enforced_by: 'hygiene.yml step "Validators reject what they claim to reject"'
+
+  parallelism.write_lease_minutes:
+    type: integer
+    min: 1
+    effect: >-
+      How long one agent's claim on a worktree stands without a further write. Two writing
+      agents in one worktree are forbidden — that is the case where implicit decisions conflict
+      — and this bounds the lease that enforces it. It expires rather than being released
+      because nothing signals that a session ended, and a claim that outlives its holder turns
+      a closed window into a repository nobody can write to.
+    enforced_by: 'hygiene.yml step "Validators reject what they claim to reject"'
+
+  deny_commands:
+    type: list
+    item_type: string
+    effect: >-
+      Commands refused at the tool layer, as regexes matched case-insensitively against the
+      whole command string. Destructive git operations carry the most weight: an agent that
+      force-pushes destroys the review trail every other control depends on. Advisory by
+      classification (ADR-012) — it catches the obvious slip and contains nothing determined.
+      Read by the hook matcher, whose tests assert every pattern compiles and that ordinary
+      work is not caught, and by the generator that writes the per-tool artifacts (M2-03).
+    enforced_by: 'hygiene.yml step "Validators reject what they claim to reject"'
+
+  deny_command_prefixes:
+    type: map
+    item_type: list
+    effect: >-
+      The coarse form of each `deny_commands` regex, for a tool whose matcher is prefix-based
+      and cannot express one. Declared rather than inferred: a generator guessing at regex
+      semantics produces entries that look like coverage and match nothing. Every regex must
+      appear as a key, and an empty list is the honest answer where no prefix expresses the
+      pattern — those are written into the generated file as a named gap, so the difference in
+      coverage between the two tools is visible in the artifact rather than derived by eye.
+    enforced_by: 'hygiene.yml step "The tool deny lists match the configuration"'
+
+  deny_reads:
+    type: list
+    item_type: string
+    effect: >-
+      Paths a tool with a path-matched read deny list should refuse, as globs. Not derived from
+      `deny_commands`, because reading a credential through a file-read tool and reading it
+      through a shell command are the same act reaching the same bytes and only the second
+      looks like a command. Advisory for the same reason the rest of this layer is: what makes
+      a secret unreachable is that the credential is not on the machine, not that a matcher
+      declined to show it.
+    enforced_by: 'hygiene.yml step "The tool deny lists match the configuration"'
+
+  protected_paths:
+    type: list
+    item_type: string
+    effect: >-
+      Paths outside the agent's write scope, and the source CODEOWNERS is generated from. The
+      grader lives outside the graded party's write scope or the gate layer is advisory.
+    pending: M2-01
+
+  mcp_servers:
+    type: list
+    item_type: string
+    effect: >-
+      Allowlist of MCP servers as `<name>@<version>` with optional `access=read|write` and
+      `env=development|production`. An empty list means none is configured. A server present
+      in a tool config but absent here is rejected, a floating version is rejected, and an
+      entry declaring write access to production is rejected outright — the permission layer
+      cannot see what an MCP tool reaches, so that one is decided here or not at all.
+    enforced_by: 'hygiene.yml step "MCP servers are allowlisted and the tool configs agree"'

@@ -1,0 +1,113 @@
+# The dependency allowlist. Nothing third-party runs or links here unless it is in this file.
+#
+# Package hallucination is the highest-probability AI-specific supply-chain risk: roughly 19.7%
+# of generated package references do not exist, across ~205,000 unique invented names, and 43%
+# repeat across identical prompts. That last number is the dangerous one — repeatable enough
+# for an attacker to pre-register the name and wait.
+#
+# `min_age_days` is the specific counter. An attacker who registers a hallucinated name must
+# then sit on it for three months while every scanner watching for this is looking at it.
+#
+# `first_release` is when the NAME first appeared, not when the pinned version shipped. That
+# distinction is the control: the attack is a freshly registered name, so a fresh *version* of
+# a package that has existed for fifteen years is not what this is looking for. Reading it the
+# other way forbids ever taking an update, which was the first version of this file — both
+# CodeQL major-version tags point at commits from yesterday, because major tags are moved on
+# every release, and an age rule applied to those would have banned the action outright.
+#
+# Each entry needs a `reason` a human wrote and a `first_release` date. The reason is not
+# paperwork: an agent can add a line to a manifest in a second, and the cost of writing why is
+# most of what stops a dependency being added casually.
+
+policy:
+  min_age_days: 90
+  # Severities that count as a finding, from GitHub's advisory database. GitHub rather than
+  # OSV because it is the forge this repository already depends on (ADR-002) and so adds no
+  # new trusted party — and because api.osv.dev is filtered on this network, with the same
+  # connection-reset signature as the Rust hosts, so it could not be verified even once.
+  # Medium and low are deliberately absent: a list that flags everything gets ignored, and 06
+  # §3 scopes SAST to high severity for the same reason.
+  block_severities: [critical, high]
+  # Any two dependency names within this edit distance are treated as a typosquat. Compared
+  # against each other rather than a registry, because the attack is a lookalike sitting
+  # beside the real one where a reader's eye slides over it.
+  typosquat_distance: 2
+
+dependencies:
+  - name: PyYAML
+    ecosystem: pypi
+    version: 6.0.3
+    first_release: 2011-07-01
+    pinned_by: .github/scripts/requirements.txt
+    reason: >-
+      Every provisional gate script parses YAML — config, the gate registry, ratchet baselines
+      and task frontmatter. Writing a parser instead would put a hand-rolled parser inside the
+      thing that decides whether the repository is valid. It leaves with the Python layer when
+      the binary lands.
+
+  - name: actions/checkout
+    ecosystem: github-actions
+    version: 11d5960a326750d5838078e36cf38b85af677262
+    first_release: 2019-07-19
+    pinned_by: .github/workflows
+    reason: >-
+      Every workflow needs the repository present before it can check anything. Pinned to a
+      commit rather than the v4 tag: a tag is mutable, and an action runs arbitrary code in CI
+      with a token, so a moved tag is remote code execution inside the layer that grades the
+      agent.
+
+  - name: actions/upload-artifact
+    ecosystem: github-actions
+    version: ea165f8d65b6e75b540449e92b4886f43607fa02
+    first_release: 2019-06-18
+    pinned_by: .github/workflows/release.yml
+    reason: >-
+      08 §4 requires an artifact to be built once and promoted, never rebuilt per environment.
+      Without artifact transfer the job that proves the invocation contract would have to build
+      its own binary, and would then be proving the contract for a binary nobody ships.
+
+  - name: actions/download-artifact
+    ecosystem: github-actions
+    version: d3f86a106a0bac45b974a628896c90dbdf5c8093
+    first_release: 2019-06-18
+    pinned_by: .github/workflows/release.yml
+    reason: >-
+      The other half of the same requirement. Used by the proof job, which deliberately never
+      installs a toolchain, and by the publish job.
+
+  - name: github/codeql-action/init
+    ecosystem: github-actions
+    version: bce182f857edf1feab116e9795a3393d21977282
+    first_release: 2020-04-27
+    pinned_by: .github/workflows/sast.yml
+    reason: >-
+      Runs the static analysis M3-06 wires. GitHub's own analyser rather than a third party,
+      because it adds no trusted party beyond the forge this repository already depends on
+      (ADR-002) and needs no credential to reach a service.
+
+  - name: github/codeql-action/analyze
+    ecosystem: github-actions
+    version: bce182f857edf1feab116e9795a3393d21977282
+    first_release: 2020-04-27
+    pinned_by: .github/workflows/sast.yml
+    reason: >-
+      The second half of the same action. It only uploads results — what a finding costs is a
+      tier question, and check-sast.py answers that.
+
+# Controls the design names that are not built here yet. Each says why, and which task lands
+# it, on the same rule as the ratchets: a control that is silently absent is indistinguishable
+# from one nobody thought was needed.
+planned:
+  - id: sbom_per_release
+    pending: M5-03
+    reason: >-
+      An SBOM describes a released artifact and there are no releases, nor a binary to release,
+      until the toolchain is reachable. Generating one for a tree of scripts would produce a
+      document nothing consumes.
+
+  - id: cargo_lockfile
+    pending: M1-08
+    reason: >-
+      Cargo.lock is generated by cargo, and the toolchain cannot be fetched from this network.
+      The manifest declares no dependencies, so the lockfile is currently near-empty, but
+      hand-writing one would be inventing a file whose whole purpose is to be machine-derived.

@@ -1,0 +1,7 @@
+diff --git a/tests/test_billing.py b/tests/test_billing.py
+--- a/tests/test_billing.py
++++ b/tests/test_billing.py
+@@ -3,4 +3,4 @@
+ def test_invoice_total(self):
+-        self.assertTrue(invoice.total())
++        self.assertEqual(invoice.total(), 100)

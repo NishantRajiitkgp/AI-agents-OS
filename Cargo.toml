@@ -1,0 +1,25 @@
+# The dependency list is empty and that is a design constraint, not a milestone accident.
+# The OS has to pass its own M3 supply-chain gates without granting itself exceptions, and a
+# tool that audits dependencies while carrying a large tree of its own is not credible.
+# Argument parsing is hand-rolled for the same reason: a CLI framework is the easiest
+# dependency in the world to justify, which is exactly why it is the one to refuse first.
+
+[package]
+name = "aios"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.97.1"
+description = "Reads and checks the project state the AI Engineering OS template defines"
+license = "MIT"
+publish = false
+
+[dependencies]
+
+[profile.release]
+# A cloned project invokes this binary without adopting the OS's runtime (ADR-005), so size
+# and startup cost are its problem, not ours to be casual about.
+strip = true
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"

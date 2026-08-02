@@ -1,0 +1,14 @@
+# The toolchain is pinned to an exact version rather than to `stable`, because `stable` is a
+# moving target and the whole point of M1-08 is that a contributor build and a CI build cannot
+# diverge. `aios check` promises to run locally exactly what CI runs; that promise is empty if
+# the two are built by different compilers.
+#
+# rustup reads this file automatically and installs the pinned toolchain on first invocation,
+# so a clean checkout needs no setup step. That is the Done-when condition for M1-08.
+#
+# Raising this version is a deliberate change with a diff, which is the intended cost.
+
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

@@ -1,0 +1,7 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -12,4 +12,4 @@
+       - name: Tests
+-        run: pytest
++        run: pytest --ignore=tests/integration

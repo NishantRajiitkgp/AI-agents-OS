@@ -1,0 +1,140 @@
+name: Release
+
+# The release pipeline for the `aios` binary, and the place ADR-005's hard constraint gets
+# tested rather than argued: a cloned project must be able to invoke the tool without adopting
+# the OS's runtime.
+#
+# 08 §4 requires every artifact to be built once and promoted, never rebuilt per environment.
+# That is why the proof job downloads the artifact the build job produced instead of building
+# its own — a rebuilt binary would prove the contract for a binary nobody ships.
+#
+# NOTE: unrun. The Rust toolchain is unreachable from the development network, so nothing here
+# has executed. It is written to be reviewable and to run on the first tag; it is not evidence.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and prove, but publish nothing
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # musl rather than glibc for Linux. ADR-005 says self-contained, and a glibc-linked
+          # binary is self-contained only until it meets an older glibc than it was built on —
+          # which is the failure a host project would report as "the OS imposed a runtime".
+          - { os: ubuntu-latest,  target: x86_64-unknown-linux-musl, ext: '' }
+          - { os: macos-latest,   target: aarch64-apple-darwin,      ext: '' }
+          - { os: macos-13,       target: x86_64-apple-darwin,       ext: '' }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc,    ext: '.exe' }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - name: Build the release binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.target }}" = "x86_64-unknown-linux-musl" ]; then
+            sudo apt-get update && sudo apt-get install -y musl-tools
+          fi
+          rustup target add "${{ matrix.target }}"
+          cargo build --release --locked --target "${{ matrix.target }}"
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/aios${{ matrix.ext }}" \
+             "dist/aios-${{ matrix.target }}${{ matrix.ext }}"
+
+      # Q-001 turns on this number: whether a binary can be committed without violating the
+      # artifact-size ratchet, or whether it has to be fetched and checksum-verified.
+      - name: Checksum it and record its size
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          artifact="aios-${{ matrix.target }}${{ matrix.ext }}"
+          if command -v sha256sum >/dev/null; then
+            sha256sum "$artifact" > "$artifact.sha256"
+          else
+            shasum -a 256 "$artifact" > "$artifact.sha256"
+          fi
+          bytes=$(wc -c < "$artifact" | tr -d ' ')
+          echo "| ${{ matrix.target }} | $bytes | $(cat "$artifact.sha256" | cut -d' ' -f1) |" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: aios-${{ matrix.target }}
+          path: dist/
+          if-no-files-found: error
+
+  # The claim ADR-005 makes, checked where it can actually fail. This job never installs a
+  # Rust toolchain, removes the one the runner image ships, and refuses to continue until it
+  # has confirmed the absence. Then a Node project calls the binary.
+  prove-runtime-free:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: aios-x86_64-unknown-linux-musl
+          path: dist
+
+      - name: Remove the toolchain, then prove it is gone
+        run: |
+          set -euo pipefail
+          rustup self uninstall -y || true
+          sudo rm -rf "$HOME/.cargo" "$HOME/.rustup" /usr/local/rustup /usr/local/cargo
+          for tool in cargo rustc rustup; do
+            if command -v "$tool" >/dev/null 2>&1; then
+              echo "$tool is still on PATH; the proof below would be worthless" >&2
+              exit 1
+            fi
+          done
+          echo "cargo, rustc and rustup are absent from this machine."
+
+      - name: Prove the invocation contract from another ecosystem
+        run: |
+          set -euo pipefail
+          chmod +x dist/aios-x86_64-unknown-linux-musl
+          # Not `npm install`. The host project has no dependencies, on purpose.
+          node tests/host-project/check.mjs \
+            "$PWD/dist/aios-x86_64-unknown-linux-musl" | tee "$GITHUB_STEP_SUMMARY"
+
+      - name: Run the conformance suite against the shipped binary
+        env:
+          AIOS_BINARY: ${{ github.workspace }}/dist/aios-x86_64-unknown-linux-musl
+        run: python3 -m unittest tests.test_invocation_contract
+
+  publish:
+    needs: prove-runtime-free
+    if: startsWith(github.ref, 'refs/tags/v') && inputs.dry_run != true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "Checksums are attached per artifact. The invocation contract is
+          ADR-013; the binary in this release passed its conformance suite and was called from
+          a project in another ecosystem on a machine with no Rust toolchain."

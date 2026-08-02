@@ -1,0 +1,38 @@
+name: test-integrity
+
+# A Contract gate: any hit blocks the merge and cannot be waived (06 §4). Every other gate in
+# this repository trusts the test suite, and that trust is only worth something if the suite
+# cannot be quietly edited into agreement.
+#
+# Legitimate cases exist — a genuinely flaky test does sometimes need skipping. The route is a
+# human commit carrying the reason, which is the visibility this control exists to produce.
+# The gate is not claiming these edits are wrong; it is claiming they cannot be silent.
+#
+# PROVISIONAL IMPLEMENTATION, per ADR-006. Moves into `aios check` at M1-14.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      # The base commit is needed to compute the diff, so the shallow default will not do.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          fetch-depth: 0
+
+      # The branch name goes through the environment rather than being interpolated into the
+      # script. A ${{ }} expansion is substituted before the shell ever sees it, so a
+      # ref-shaped string containing shell syntax would execute — the same class of hole the
+      # untrusted-content rule covers, arriving through a different door.
+      - name: Diff weakens no tests
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE"
+          git diff "origin/$BASE...HEAD" | python3 .github/scripts/audit-test-integrity.py

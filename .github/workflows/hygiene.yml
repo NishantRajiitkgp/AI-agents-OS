@@ -1,0 +1,333 @@
+name: hygiene
+
+# Structural checks that do not need the project to build. These run outside the agent's
+# reach by construction: a workflow file is in the protected set, so an agent cannot relax
+# a gate in the same pull request that trips it
+# (docs/design/07-security-and-agent-containment.md).
+#
+# PROVISIONAL IMPLEMENTATION. ADR-006 requires gate logic to ship as subcommands of the
+# aios binary, never as scripts. That binary does not exist yet (M1-07+), so these steps
+# are inline shell on the runner. They must move into `aios check` once it exists, and the
+# workflow must then call the binary rather than reimplement the rule — two copies of a
+# gate that can disagree is exactly what P3 forbids. Tracked at M1-01.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  root-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          # The growth ratchet compares against a commit up to `growth_window_commits` back.
+          # A shallow clone would silently shorten the window to whatever was fetched, which
+          # is a check that appears to run and compares against almost nothing.
+          fetch-depth: 0
+
+      # Runs first: later steps read their thresholds from aios/config.yml, and reading an
+      # unvalidated file would let a malformed value silently disable the gate that uses it.
+      - name: Configuration is valid and every key documents its effect
+        run: python3 .github/scripts/validate-config.py
+
+      # Thresholds live in aios/config.yml, which is their single home. Duplicating them
+      # here would create two numbers that can disagree, which is what P3 forbids.
+      - name: Load budgets from configuration
+        run: |
+          python3 - <<'PY' >> "$GITHUB_ENV"
+          import yaml
+          b = yaml.safe_load(open('aios/config.yml'))['budgets']
+          print(f"BUDGET_TOTAL={b['always_on_lines']}")
+          print(f"BUDGET_AGENTS={b['agents_md_lines']}")
+          print(f"ROOT_MD_CAP={b['root_markdown_files']}")
+          PY
+          echo "Budgets loaded from aios/config.yml."
+
+      # Structure, status vocabulary and mandatory reasons block. EARS
+      # conformance and weasel words warn only: a requirement that resists EARS is usually
+      # saying something about the requirement, and blocking there buys template-shaped
+      # nonsense written to satisfy a linter.
+      # docs/design/04-state-and-tasks.md#2-requirements
+      - name: Requirement area files conform to the schema
+        run: python3 .github/scripts/validate-requirements.py
+
+      # The field list is closed, so an unknown field is an error rather than a warning. The
+      # failure being prevented is schema drift by accretion: a slot appears, agents fill it,
+      # and later nobody can say which fields anything actually reads.
+      # docs/design/04-state-and-tasks.md#31-schema
+      - name: Task files conform to the schema
+        run: python3 .github/scripts/validate-tasks.py
+
+      # The two steps above check each file against its own schema. This checks what no
+      # single file can know: whether what it points at exists. A task whose `satisfies`
+      # names no active requirement fails here rather than being skipped — that is the
+      # anti-invention control, and skipping would hide the one thing worth seeing.
+      # docs/design/04-state-and-tasks.md#2-requirements
+      - name: References between requirements and tasks resolve
+        run: python3 .github/scripts/validate-references.py
+
+      # Nothing third-party runs here unless it is allowlisted, pinned and old enough. The
+      # direction that matters is finding dependencies the allowlist does not mention: an
+      # allowlist checked only against itself lists what someone remembered to write down.
+      # Existence against the registry is the scheduled job, not this one — a Contract gate
+      # that reaches the network fails on somebody else's outage.
+      - name: Every dependency is allowlisted and pinned
+        run: python3 .github/scripts/check-dependencies.py
+
+      # Ratchets: whatever the repository already is, it may not get worse. The baseline is
+      # compared against its committed value too, because loosening one is the single edit a
+      # regression needs and it reads like ordinary configuration.
+      # docs/design/06-quality-gates-and-testing.md#1-four-gate-classes
+      - name: No ratchet metric got worse
+        run: python3 .github/scripts/check-ratchets.py
+
+      # Every check declares a class, and the class is checked against how the step actually
+      # behaves. The direction that carries the weight is the other one: a step that runs a
+      # command and is not in the register fails here, because if omission avoided the
+      # declaration then declaring would be optional in practice.
+      # docs/design/06-quality-gates-and-testing.md#1-four-gate-classes
+      - name: Every check declares a class
+        run: python3 .github/scripts/validate-gates.py
+
+      # The gates above prove the repository is currently valid. This proves the gates
+      # themselves still reject what they claim to: each has a fixture that must fail. A
+      # validator with no failing fixture is indistinguishable from one that returns zero.
+      # How much work merges without a human looking. The invariant that `risk: high` never
+      # reaches A2 is checked independently of the table that encodes it, so editing the
+      # table cannot repeal the rule.
+      # docs/design/05-workflows.md#4-autonomy-levels
+      # An MCP server is untrusted content arriving in context plus tools the permission
+      # layer cannot see. Both tool configs are read, so both are compared.
+      # docs/design/07-security-and-agent-containment.md#13-prompt-injection
+      - name: Every verification record re-checks
+        run: python3 .github/scripts/check-verification-records.py
+
+      - name: Every protected path has a named owner
+        run: python3 .github/scripts/check-codeowners.py
+
+      - name: The tool deny lists match the configuration
+        run: python3 .github/scripts/generate-deny-lists.py
+
+      - name: MCP servers are allowlisted and the tool configs agree
+        run: python3 .github/scripts/check-mcp.py
+
+      - name: Autonomy levels resolve and hold their invariants
+        run: python3 .github/scripts/check-autonomy.py
+
+      # Every document is generated, checked, dated-and-owned, or immutable (M5-03). Those are
+      # the four ways a document is kept from rotting; one that is none of them will. The
+      # staleness half (M5-04) reports past the review date and blocks past double at
+      # production tier, where deleting it is no longer the cheap answer.
+      - name: Every document is classified and in date
+        run: python3 .github/scripts/check-docs.py
+
+      # An incident without the control it produced is a regret, not a record (M5-11).
+      - name: Incidents name the control they produced
+        run: python3 .github/scripts/validate-incidents.py
+
+      # Every rule is enforced or admits it cannot be (M5-12). A file whose rules are all
+      # enforced fails: it is a description of the linter, and the linter already is that.
+      - name: Standards rules are enforced or say why not
+        run: python3 .github/scripts/validate-standards.py
+
+      # Report-class, never blocking (M5-05). The right fix is sometimes to change the
+      # requirement, and a gate presuming the code is wrong trains dishonest fixes.
+      - name: Traceability and orphan report
+        continue-on-error: true
+        run: python3 .github/scripts/report-traceability.py
+
+      # The growth ratchet (M5-02). The budget gate above enforces a ceiling and the ratchet
+      # a stored baseline; this compares against git history, which the commit under review
+      # cannot edit. Needs full history to look back over the window.
+      - name: Always-on context has not grown
+        run: python3 .github/scripts/check-growth.py
+
+      # Memory hygiene as a build failure (04 §6). A stale instruction reads exactly like a
+      # correct one, so it has to be caught mechanically rather than noticed. Links are
+      # checked everywhere in scope; prose only where a reader is being instructed, because
+      # in an append-only record a path that no longer exists is history, not staleness.
+      - name: Every path named in an instruction file exists
+        run: python3 .github/scripts/check-memory.py
+
+      # A slash command is a shortcut for one invocation. Once it holds a condition or a
+      # second step it is an implementation in a file with no tests, and the divergence is
+      # silent — the command still runs, it just stops meaning what its name says. The
+      # one-directory rule comes from the M0 measurement that Cursor reads .claude/commands/.
+      # aios/bin/probe/results/probe-2026-07-31.md
+      - name: Slash commands are one invocation and live in one place
+        run: python3 .github/scripts/check-commands.py
+
+      - name: Validators reject what they claim to reject
+        run: python3 -m unittest discover -s tests
+
+      # Root files are the most expensive real estate in the repository: everything scans
+      # them, humans and agents alike. The cap exists to prevent the observed drift toward
+      # CONTRIBUTING.md, ARCHITECTURE.md, STYLE.md, TODO.md accumulating at root, each
+      # competing for the same attention.
+      # docs/design/03-repository-architecture.md#12-what-the-top-level-is-allowed-to-contain
+      - name: Root markdown file count is within cap
+        run: |
+          limit="$ROOT_MD_CAP"
+          mapfile -t found < <(find . -maxdepth 1 -type f -name '*.md' -printf '%f\n' | sort)
+          count=${#found[@]}
+          printf 'Found %d markdown file(s) at root (cap %d):\n' "$count" "$limit"
+          printf '  %s\n' "${found[@]}"
+          if [ "$count" -gt "$limit" ]; then
+            printf '\n::error::Root holds %d markdown files; the cap is %d.\n' "$count" "$limit"
+            echo "Move one into docs/ or aios/, or supersede it. Raising the cap is a"
+            echo "decision that needs an ADR, not a one-line edit to this workflow."
+            exit 1
+          fi
+
+      # A flattened symlink is a file committed as mode 120000 that checked out as a small
+      # plain text file containing its own link target. It looks valid to every tool that
+      # reads it. Checking the index rather than the working copy makes this independent of
+      # the checkout machine's core.symlinks setting.
+      # ADR-008
+      - name: No symlinks are committed
+        run: |
+          links=$(git ls-files -s | awk '$1 == "120000" { print $4 }')
+          if [ -n "$links" ]; then
+            printf '::error::Symlinks are committed; they flatten silently on Windows checkouts.\n'
+            printf '%s\n' "$links"
+            echo "CLAUDE.md in particular must be an import shim, never a symlink (03 §3.3)."
+            exit 1
+          fi
+          echo "No mode-120000 entries in the index."
+
+      # A UTF-8 file read through a legacy code page and written back as UTF-8 is corrupted
+      # silently: it still parses, still renders, and only looks wrong. This caught nothing
+      # in review the first time it happened and was found by accident.
+      # aios/incidents/2026-07-31-encoding-double-round-trip.md
+      #
+      # The signatures are written as hex escapes rather than as the characters themselves
+      # so that this file stays pure ASCII. A gate whose own text trips it is not a gate.
+      - name: No byte-order marks or mojibake in tracked text files
+        run: |
+          status=0
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            if [ "$(head -c 3 "$f" | od -An -tx1 | tr -d ' \n')" = "efbbbf" ]; then
+              printf '::error file=%s::Byte-order mark at start of file.\n' "$f"
+              status=1
+            fi
+            # C3A2 E282AC  = 'a-circumflex' + euro, i.e. a re-encoded U+2014 and friends
+            # C382 C2xx    = a re-encoded U+00A0..U+00BF (section sign, degree, guillemets)
+            # C383 C2xx    = a re-encoded U+00C0..U+00FF (accented Latin)
+            if LC_ALL=C grep -qP '\xc3\xa2\xe2\x82\xac|\xc3\x82\xc2[\xa0-\xbf]|\xc3\x83\xc2[\x80-\xbf]' "$f"; then
+              printf '::error file=%s::Mojibake: UTF-8 was decoded as a legacy code page and re-encoded.\n' "$f"
+              status=1
+            fi
+          done < <(git ls-files -- '*.md' '*.mdc' '*.yml' '*.yaml' '*.toml' '*.rs' '*.txt' '*.json')
+          if [ "$status" -ne 0 ]; then
+            echo "Repair by decoding as UTF-8, stripping the BOM, re-encoding as cp1252 to"
+            echo "recover the original bytes, then decoding those with a strict UTF-8 decoder."
+            exit 1
+          fi
+          echo "All tracked text files are clean UTF-8 without a BOM."
+
+      # ADR-010: the budget covers the enumerated always-on set, not AGENTS.md alone.
+      # ADR-011: the total is 200 lines, of which AGENTS.md may use 150.
+      #
+      # The measurement used to live here as shell and again in check-ratchets.py as Python.
+      # Both read aios/config.yml for the thresholds, so the numbers agreed; the *set* did not,
+      # because only this copy counted skill and subagent descriptions. One definition now,
+      # in the script, called from both.
+      - name: Always-on context is within budget
+        run: python3 .github/scripts/check-always-on.py
+
+      # P1: instruction files state facts, not procedures. A line opening with an imperative
+      # is a procedure and belongs in a gate or nowhere. docs/design/02-principles.md
+      # README.md is exempt: it addresses a human, where instructions are the point.
+      - name: Instruction files state facts, not procedures
+        run: |
+          status=0
+          for f in AGENTS.md CLAUDE.md; do
+            if grep -inE '^[[:space:]]*[#>*-]*[[:space:]]*(always|never|make sure to|remember to)([^-[:alnum:]]|$)' "$f"; then
+              printf '::error file=%s::the lines above open with an imperative.\n' "$f"
+              status=1
+            fi
+          done
+          if [ $status -ne 0 ]; then
+            echo "Mechanise the rule as a gate, or delete it. The only procedures that"
+            echo "survive here are the ones a machine genuinely cannot check."
+            exit 1
+          fi
+          echo "No line opens with an imperative."
+
+      # A document naming a path that does not exist is worse than one that stays quiet: the
+      # agent searches, finds nothing, and concludes the repository is inconsistent.
+      - name: Every path the root documents name exists
+        run: |
+          status=0
+          for f in AGENTS.md CLAUDE.md README.md; do
+            while IFS= read -r p; do
+              case "$p" in
+                *[!A-Za-z0-9._/-]*) continue ;;   # not a bare path-shaped token
+              esac
+              case "$p" in
+                */*) ;;                            # contains a separator: treat as a path
+                *.md|*.yml|*.toml|*.rs) ;;         # bare filename with a known extension
+                *) continue ;;
+              esac
+              if [ ! -e "$p" ]; then
+                printf '::error file=%s::names `%s`, which does not exist.\n' "$f" "$p"
+                status=1
+              fi
+            done < <(grep -oP '`[^`]+`' "$f" | tr -d '`' | sort -u)
+          done
+          [ $status -eq 0 ] && echo "Every path named in the root documents resolves."
+          exit $status
+
+      # ADR-008 check 3: validate the shim positively. Assert the shape required, rather
+      # than trying to recognise one of the unbounded ways it can be wrong. Check 1 (no
+      # mode-120000 entries) already runs above and is the primary gate.
+      - name: CLAUDE.md is a working import shim
+        run: |
+          if ! grep -qx '@AGENTS.md' CLAUDE.md; then
+            echo "::error file=CLAUDE.md::missing the line '@AGENTS.md' on a line of its own."
+            echo "A flattened symlink, an empty file, and a file that has drifted into"
+            echo "duplicated content all fail here for the same reason: none of them assert"
+            echo "the one shape a shim is allowed to have."
+            exit 1
+          fi
+          echo "CLAUDE.md carries its import directive."
+
+      # docs/design/03-repository-architecture.md#42-the-doc-set: every command the README
+      # shows is executed in CI. A README with a broken quickstart is worse than none.
+      #
+      # The allowlist is held here, in a CODEOWNERS-protected path, rather than executing
+      # whatever the README happens to contain. CI running arbitrary content out of an
+      # agent-writable file would hand the agent the runner.
+      - name: Every command the README shows is one CI runs
+        run: |
+          # Commands CI executes. Empty while nothing builds; each entry added here must be
+          # executed by a step in this workflow.
+          allowed=""
+
+          shown=$(awk '
+            /^```(sh|bash|shell|console|powershell)$/ { inblock=1; next }
+            /^```/                                    { inblock=0 }
+            inblock && $0 !~ /^[[:space:]]*(#|$)/     { sub(/^[[:space:]]*\$[[:space:]]*/, ""); print }
+          ' README.md)
+
+          if [ -z "$shown" ]; then
+            echo "README shows no commands; nothing to execute."
+            exit 0
+          fi
+
+          status=0
+          while IFS= read -r cmd; do
+            [ -z "$cmd" ] && continue
+            if ! printf '%s\n' "$allowed" | grep -qxF "$cmd"; then
+              printf '::error file=README.md::shows `%s`, which no CI step runs.\n' "$cmd"
+              status=1
+            fi
+          done <<< "$shown"
+          [ $status -eq 0 ] && echo "Every command the README shows is executed by CI."
+          exit $status

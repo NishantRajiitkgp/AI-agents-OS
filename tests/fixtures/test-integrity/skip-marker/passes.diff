@@ -1,0 +1,11 @@
+diff --git a/tests/test_billing.py b/tests/test_billing.py
+--- a/tests/test_billing.py
++++ b/tests/test_billing.py
+@@ -1,5 +1,9 @@
+ import pytest
+ 
+ def test_invoice_total():
+     assert invoice.total() == 100
++
++def test_invoice_currency():
++    assert invoice.currency() == "GBP"

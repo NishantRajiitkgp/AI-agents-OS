@@ -1,0 +1,7 @@
+diff --git a/tests/test_worker.py b/tests/test_worker.py
+--- a/tests/test_worker.py
++++ b/tests/test_worker.py
+@@ -2,4 +2,4 @@
+ def test_job_completes():
+-    result = worker.run(timeout=5)
++    result = worker.run(timeout=120)

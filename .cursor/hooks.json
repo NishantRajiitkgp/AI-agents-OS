@@ -1,0 +1,70 @@
+{
+  "_comment": [
+    "Two entries. One refuses, one observes, and the difference decides everything about how",
+    "each is configured.",
+    "",
+    "check-mode (preToolUse, Write) refuses a write the active mode, autonomy level or",
+    "three-strikes stop does not permit. failClosed is true, which is the standing rule for a",
+    "control. The blast radius is bounded on purpose: the matcher is Write, so if it ever",
+    "breaks, Shell still runs and the repository can be repaired from the terminal. A control",
+    "whose failure mode locks you out of fixing it is not a safety control.",
+    "",
+    "record-attempt (postToolUse, Shell) writes down whether a test passed or failed. It never",
+    "denies — postToolUse cannot — and failClosed is false because there is nothing to fail",
+    "closed on: an observer that cannot read its input records nothing and blocks nothing. It",
+    "exists so the three-strikes stop is counted from what happened rather than from what the",
+    "agent says happened, which matters because the rule fires exactly when self-reporting is",
+    "worth least.",
+    "",
+    "Both contracts were measured, not read: aios/bin/probe/results/hook-event-2026-08-01.md.",
+    "That file exists because M2-08 registered a hook against the documented contract and",
+    "blocked every shell command in the editor, twice. Two findings from it are load-bearing.",
+    "Cursor prefixes stdin with a UTF-8 BOM, which is almost certainly what that incident",
+    "recorded as 'empty stdin'. And postToolUse is the only event carrying an outcome, with",
+    "the exit code nested inside tool_output as a JSON string — and it is the shell's exit",
+    "code, not the command's, so record-attempt reads the runner's own verdict from the output",
+    "text instead.",
+    "",
+    "deny-commands (preToolUse, Shell) is the third entry and the one M2-10 was raised to",
+    "finish. It refuses, and it is the one entry here with failClosed false. That is not an",
+    "oversight and it is the opposite of the standing rule, so the reason is on the record.",
+    "Its matcher is Shell: if it breaks there is no repair path through the terminal, because",
+    "the terminal is what it just took away. That was not reasoned about in advance, it was",
+    "measured — registering it with failClosed true and then leaving config.yml momentarily",
+    "half-written refused every command in the editor, and the only way back was the write",
+    "tool. The M2-08 outage, in the one place this file predicted it. Fail-closed is right for",
+    "the layer that is the containment; this layer is Advisory by ADR-012, so it does not buy",
+    "enough to be worth a repository nobody can fix. The script now allows and prints when it",
+    "cannot decide. A denial it can decide is still a denial.",
+    "It was run by hand against a real event, both shapes, before it was named here.",
+    "",
+    "Q-005 — which interpreter a checked-in hook names — is not solved here, only survived.",
+    "`python` works on this machine and `python3` does not; neither is portable. ADR-006's",
+    "answer still stands: this becomes an aios subcommand and names no interpreter at all."
+  ],
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "python aios/bin/hooks/check-mode.py",
+        "matcher": "Write",
+        "failClosed": true,
+        "timeout": 10
+      },
+      {
+        "command": "python aios/bin/hooks/deny-commands.py",
+        "matcher": "Shell",
+        "failClosed": false,
+        "timeout": 10
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "python aios/bin/hooks/record-attempt.py",
+        "matcher": "Shell",
+        "failClosed": false,
+        "timeout": 10
+      }
+    ]
+  }
+}

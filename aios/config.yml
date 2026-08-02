@@ -1,0 +1,314 @@
+﻿# aios configuration.
+#
+# Every key here is declared in `aios/config.schema.yml`, which records what the key does and
+# what reads it. A key that nothing reads is not configuration â€” it is decoration that looks
+# like a control â€” so the schema requires each one to name either its enforcement point or the
+# task that will provide one.
+#
+# This file is in the protected set: the agent reads it and does not write it. A grader whose
+# thresholds the graded party can edit is not a grader.
+
+# Version of the template this project was created from. `aios upgrade` compares against it to
+# report which template changes apply.
+template_version: 0.1.0-dev
+
+# Which gates block. The gate *set* is identical across tiers; the tier only changes each
+# check's class, so raising it is a one-line change rather than a migration.
+# One of: prototype, internal, production, regulated.
+tier: prototype
+
+paths:
+  # Name of the state directory. A project that dislikes `aios/` renames it here rather than
+  # in every path the tooling knows.
+  state_dir: aios
+
+# Which template version this project is pinned to. `aios upgrade` compares against it and
+# reports what changed; nothing is ever applied without a human. A project may decline any
+# change permanently — the template is a starting point, not a dependency.
+template:
+  version: "0.1.0"
+
+# What survives of review-debt tracking after ADR-014 dropped the time-based half. Time spent
+# on a diff is not recorded by any forge, and a proxy that wrong misleads worse than no metric.
+review_debt:
+  # Reviews looked at, most recent first.
+  window: 10
+  # Percentage of them that may be approvals carrying no comment at all. Past it, `aios next`
+  # stops handing out work: review is the bottleneck, and adding to the queue makes it worse.
+  max_uncommented_percent: 50
+  # Lines in a diff put in front of one reviewer. Reading does not scale with lines, so the
+  # budget sits on the diff rather than on the reader.
+  max_diff_lines: 400
+
+budgets:
+  # Total always-on context: AGENTS.md, alwaysApply rules, skill and subagent descriptions.
+  # Set by ADR-011 against the measured set, not guessed.
+  always_on_lines: 200
+  # Sub-budget within the above, reserved for AGENTS.md.
+  agents_md_lines: 150
+  # How far back the always-on growth ratchet compares. Long enough that a rule added and
+  # removed inside one sprint nets to zero, short enough that the comparison is against a
+  # state someone still remembers.
+  growth_window_commits: 20
+  # Markdown files permitted at the repository root.
+  root_markdown_files: 5
+  # Lines permitted in a single task file. A task needing more than this is two tasks, or its
+  # context belongs in a requirement or an ADR.
+  task_file_lines: 60
+  # Wall-clock ceiling for `aios check`. Past this, contributors route around it, which is the
+  # bypass behaviour the gate layer exists to prevent.
+  check_seconds: 60
+  # Wall-clock ceiling for the pre-commit hook: format, secrets scan, changed-file lint. Five
+  # seconds is the point past which a hook stops feeling like part of committing (06 Â§6).
+  pre_commit_seconds: 5
+  # Wall-clock ceiling for the whole pull-request run. Fast feedback is one of the capabilities
+  # that flips AI's effect on stability from negative to positive, so this is a requirement
+  # rather than an optimisation.
+  ci_pr_seconds: 600
+
+gates:
+  # A Contract gate overridden this many times inside the window is automatically demoted to
+  # Ratchet and a report is filed. A gate overridden repeatedly is already not blocking; it is
+  # blocking dishonestly.
+  demote_contract_after_overrides: 3
+  demote_contract_window_days: 30
+  # An Advisory check ignored this many times consecutively is deleted. A noisy analyser
+  # teaches people to ignore analysers.
+  delete_advisory_after_ignored: 20
+
+# Autonomy: how many tasks may begin without a human, and whether the first needs approval.
+# Transcribed from the table in 05 Â§4, one row per project tier, kept in that shape so a
+# reader can check it against the source rather than reassemble it from twelve keys.
+#
+#   A0 â€” a human approves the approach before implementation, and reviews the diff.
+#   A1 â€” one task, then stop. The default.
+#   A2 â€” chain to chain_limit, or until any Contract gate fails.
+#
+# `risk: high` never reaches A2 at any tier. That is an invariant, not a property of these
+# numbers: it is asserted separately, so editing the table cannot quietly repeal it.
+autonomy:
+  chain_limit: 3
+  # Hard stop (05 §3.3): the same test failing this many times without passing. Beyond it the
+  # agent is guessing, and guessing next to a test is one step from weakening it. Observed
+  # from test output by a hook, never self-reported — the rule matters at exactly the moment
+  # self-reporting is least trustworthy.
+  stop_after_failed_attempts: 3
+  levels:
+    - "prototype:  low=A2 medium=A2 high=A1"
+    - "internal:   low=A2 medium=A1 high=A0"
+    - "production: low=A1 medium=A1 high=A0"
+    - "regulated:  low=A1 medium=A0 high=A0"
+
+# Modes as permission sets. A mode is a permission set plus a checklist plus an output
+# contract; this key holds the first, because it is the part a machine can enforce.
+#
+# `writes` is a list of globs the mode may write to. An empty list means no writes at all.
+# `writes: touches` means the active task's declared scope, which is the only mode whose
+# permitted set is not knowable until a task is selected.
+#
+# The active mode is named in `.aios-mode` at the repository root, which is not committed â€”
+# it is session state, not project state. No file means no mode, and no mode allows
+# everything: a template whose default is "refuse" blocks a fresh clone before it has been
+# configured, which is the fail-closed failure this repository already had once.
+modes:
+  explore:
+    writes: []
+  plan:
+    writes:
+      - "aios/tasks/**"
+      - "aios/requirements/**"
+      - "aios/open-questions.md"
+  implement:
+    writes: touches
+  verify:
+    writes: []
+
+# Parallelism (05 §6): parallel reads, serial writes. Explorers in parallel are encouraged and
+# need no configuration. The two writing cases do.
+#
+# `max_tier` is the highest tier at which two writing agents may run in separate worktrees on
+# tasks with disjoint `touches`. Above it, sequential only: two unreviewed branches double the
+# review surface the tier exists to bound. Disjointness is checked before dispatch, because
+# discovering it at merge time is discovering it too late.
+#
+# `write_lease_minutes` bounds the other case. Two writing agents in one worktree are
+# forbidden outright, and the lock that enforces it is a lease rather than a lock file because
+# nothing signals that a session ended. A lease that never expires would turn a closed window
+# into a repository nobody can write to, and that is the shape of failure people respond to by
+# deleting the control.
+#
+# Two minutes is not a comfort setting. The identity a lease can key on was measured to be the
+# *chat*, not the window (probe results, 2026-08-01), so a new chat in the same folder looks
+# exactly like a second agent. The window therefore has to sit between two intervals: longer
+# than the gap between one agent's consecutive writes, shorter than the gap between one
+# working session and the next.
+parallelism:
+  max_tier: internal
+  write_lease_minutes: 2
+
+# Commands refused at the tool layer. Destructive git operations matter more than they look:
+# an agent that force-pushes destroys the review trail the rest of the design depends on.
+#
+# Entries are regexes, matched case-insensitively against the whole command string. Regex
+# rather than prefixes because the Cursor side is enforced by a hook whose matcher is a regex,
+# and because `curl ... | sh` cannot be expressed as a prefix at all (ADR-012).
+#
+# This layer is Advisory, deliberately. Cursor's own documentation calls allowlists
+# "best-effort convenience" and not a security boundary, and a repo-level file can only widen
+# a developer's permissions, never narrow them. These patterns catch the obvious slip. What
+# actually contains the agent is server-side required review and CI gates it cannot edit â€”
+# so effort spent making these airtight is effort spent in the wrong place.
+deny_commands:
+  # Destructive filesystem removal. Both flag orderings, and long-form --recursive --force.
+  - 'rm\s+(?:-\S+\s+)*-\S*r\S*f'
+  - 'rm\s+(?:-\S+\s+)*-\S*f\S*r'
+  - 'rm\s+.*--recursive.*--force'
+  - 'rm\s+.*--force.*--recursive'
+  - 'Remove-Item\s+.*-Recurse.*-Force'
+
+  # History rewriting. The review trail is the substrate every other control sits on: a diff
+  # nobody can reconstruct cannot be reviewed, and a record pointing at a rewritten SHA
+  # verifies nothing.
+  - 'git\s+push\s+.*--force(?!-with-lease)'
+  # The group before -f is optional: `git push -f` has nothing between the two.
+  - 'git\s+push\s+(?:.*\s)?-f(?:\s|$)'
+  - 'git\s+reset\s+.*--hard'
+  - 'git\s+filter-branch'
+  - 'git\s+filter-repo'
+  - 'git\s+rebase'
+  - 'git\s+commit\s+.*--amend'
+  - 'git\s+reflog\s+.*expire'
+  - 'git\s+gc\s+.*--prune'
+  - 'git\s+update-ref\s+.*-d'
+  # Case-forced: -D force-deletes an unmerged branch, -d refuses to. The list is matched
+  # case-insensitively, which would otherwise make these the same command.
+  - 'git\s+branch\s+.*(?-i:-D)'
+  - 'git\s+clean\s+.*-\S*f'
+
+  # Piping a downloaded script straight into a shell. The reviewed artifact is the URL; the
+  # executed artifact is whatever answered at that moment.
+  - 'curl\s[^|]*\|\s*(?:sudo\s+)?(?:ba|z|k)?sh'
+  - 'wget\s[^|]*\|\s*(?:sudo\s+)?(?:ba|z|k)?sh'
+  - '(?:iwr|Invoke-WebRequest)\s[^|]*\|\s*(?:iex|Invoke-Expression)'
+
+  # Publishing. Releasing is a human act with a human's name on it.
+  - '(?:npm|pnpm|yarn|bun)\s+publish'
+  - 'cargo\s+publish'
+  - 'twine\s+upload'
+  - 'gem\s+push'
+  - 'mvn\s+.*deploy'
+  - 'docker\s+push'
+  - 'gh\s+release\s+create'
+
+  # Data destruction.
+  - 'DROP\s+(?:DATABASE|SCHEMA|TABLE)'
+  - 'TRUNCATE\s+(?:TABLE\s+)?\w'
+  - 'DELETE\s+FROM\s+\w+\s*(?:;|$)'
+  - 'db\.\w+\.drop\(\)'
+  - 'flushall|flushdb'
+
+  # Reading credentials. An agent that cannot read a secret cannot leak one, which is a
+  # stronger property than an agent instructed not to.
+  - 'cat\s+.*\.env(?:\s|$|\.)'
+  - 'cat\s+.*(?:id_rsa|id_ed25519|id_ecdsa|\.pem|\.p12|\.pfx)'
+  - 'gh\s+auth\s+token'
+  - 'aws\s+configure\s+get'
+  - 'git\s+config\s+.*credential'
+  - 'security\s+find-(?:generic|internet)-password'
+  - 'gcloud\s+auth\s+print-\S*token'
+  - 'kubectl\s+get\s+secret'
+
+  # Infrastructure mutation. `terraform apply` is denied alongside `destroy` because an apply
+  # against the wrong workspace is the same event with a better name.
+  - 'terraform\s+(?:destroy|apply)'
+  - 'kubectl\s+delete'
+  - 'aws\s+\S+\s+delete-'
+  - 'az\s+\S+\s+delete'
+
+  # Production endpoints cannot be enumerated generically: a project adds its own hostnames
+  # here. Left empty rather than guessed, because a pattern that matches nothing real would
+  # look like coverage.
+
+# The coarse form of each deny_commands entry, for tools whose matcher is prefix-based rather
+# than a regex. Claude Code is one; there is no lossless conversion, so the widening is
+# declared here beside the pattern it widens instead of being inferred by a generator that
+# would have to guess. .github/scripts/generate-deny-lists.py reads this and writes
+# .claude/settings.json; CI fails while the generated file and this map disagree.
+#
+# Every deny_commands entry must appear as a key. An empty list is the honest answer for a
+# pattern no prefix can express — a pipeline, a SQL statement, a path glob — and the generator
+# writes those out as a named gap in the file it produces, so the coverage difference between
+# the two tools is visible in the artifact rather than inferred by comparing two lists by eye.
+deny_command_prefixes:
+  'rm\s+(?:-\S+\s+)*-\S*r\S*f': ['rm -rf:*', 'rm -Rf:*']
+  'rm\s+(?:-\S+\s+)*-\S*f\S*r': ['rm -fr:*', 'rm -fR:*']
+  'rm\s+.*--recursive.*--force': ['rm --recursive:*']
+  'rm\s+.*--force.*--recursive': ['rm --force:*']
+  'Remove-Item\s+.*-Recurse.*-Force': ['Remove-Item:*']
+  'git\s+push\s+.*--force(?!-with-lease)': ['git push --force:*']
+  'git\s+push\s+(?:.*\s)?-f(?:\s|$)': ['git push -f:*']
+  'git\s+reset\s+.*--hard': ['git reset --hard:*']
+  'git\s+filter-branch': ['git filter-branch:*']
+  'git\s+filter-repo': ['git filter-repo:*']
+  'git\s+rebase': ['git rebase:*']
+  'git\s+commit\s+.*--amend': ['git commit --amend:*']
+  'git\s+reflog\s+.*expire': ['git reflog expire:*']
+  'git\s+gc\s+.*--prune': ['git gc:*']
+  'git\s+update-ref\s+.*-d': ['git update-ref -d:*']
+  'git\s+branch\s+.*(?-i:-D)': ['git branch -D:*']
+  'git\s+clean\s+.*-\S*f': ['git clean:*']
+  'curl\s[^|]*\|\s*(?:sudo\s+)?(?:ba|z|k)?sh': ['curl:*']
+  'wget\s[^|]*\|\s*(?:sudo\s+)?(?:ba|z|k)?sh': ['wget:*']
+  '(?:iwr|Invoke-WebRequest)\s[^|]*\|\s*(?:iex|Invoke-Expression)': []
+  '(?:npm|pnpm|yarn|bun)\s+publish': ['npm publish:*', 'pnpm publish:*', 'yarn publish:*', 'bun publish:*']
+  'cargo\s+publish': ['cargo publish:*']
+  'twine\s+upload': ['twine upload:*']
+  'gem\s+push': ['gem push:*']
+  'mvn\s+.*deploy': ['mvn deploy:*']
+  'docker\s+push': ['docker push:*']
+  'gh\s+release\s+create': ['gh release create:*']
+  'DROP\s+(?:DATABASE|SCHEMA|TABLE)': []
+  'TRUNCATE\s+(?:TABLE\s+)?\w': []
+  'DELETE\s+FROM\s+\w+\s*(?:;|$)': []
+  'db\.\w+\.drop\(\)': []
+  'flushall|flushdb': []
+  'cat\s+.*\.env(?:\s|$|\.)': ['cat .env:*']
+  'cat\s+.*(?:id_rsa|id_ed25519|id_ecdsa|\.pem|\.p12|\.pfx)': []
+  'gh\s+auth\s+token': ['gh auth token:*']
+  'aws\s+configure\s+get': ['aws configure get:*']
+  'git\s+config\s+.*credential': ['git config --get credential.helper:*']
+  'security\s+find-(?:generic|internet)-password': ['security find-generic-password:*', 'security find-internet-password:*']
+  'gcloud\s+auth\s+print-\S*token': ['gcloud auth print-access-token:*', 'gcloud auth print-identity-token:*']
+  'kubectl\s+get\s+secret': ['kubectl get secret:*']
+  'terraform\s+(?:destroy|apply)': ['terraform apply:*', 'terraform destroy:*']
+  'kubectl\s+delete': ['kubectl delete:*']
+  'aws\s+\S+\s+delete-': []
+  'az\s+\S+\s+delete': []
+
+# Paths a tool with a path-matched read deny list should refuse. Not derived from
+# deny_commands: reading one of these through a file-read tool and reading it through a shell
+# command are the same act reaching the same bytes, and only the second looks like a command.
+deny_reads:
+  - .env
+  - .env.*
+  - '**/*.pem'
+  - '**/*.p12'
+  - '**/id_rsa'
+  - '**/id_ed25519'
+
+# Paths outside the agent's write scope. The enforcing layer is server-side required review;
+# the tool-level deny list and any local hook are convenience.
+protected_paths:
+  - .github/**
+  - aios/bin/**
+  - aios/config.yml
+  - aios/config.schema.yml
+  - aios/gates.yml
+  - aios/ratchets.yml
+  - tests/**
+  - "**/*_test.*"
+  - "**/*.test.*"
+
+# Allowlisted MCP servers, each pinned to a version. Empty: none is configured, and no server
+# with write access to a production system belongs in a development profile.
+mcp_servers: []

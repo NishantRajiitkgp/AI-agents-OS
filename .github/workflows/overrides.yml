@@ -1,0 +1,32 @@
+name: Overrides
+
+# Contract at every tier. A gate governing the escape hatch from Contract gates cannot be
+# weaker than the gates it governs, or the hatch becomes the way around all of them.
+#
+# fetch-depth: 0 because half the check is historical: it compares each override record
+# against its content at the base ref, and a shallow clone cannot answer that. A record that
+# can be quietly edited after the fact is not a record.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  overrides:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          fetch-depth: 0
+
+      - name: Every override is recorded, and no record is rewritten
+        run: |
+          python3 .github/scripts/check-overrides.py \
+            --range "origin/${{ github.base_ref }}..HEAD"
+
+      # Same workflow because it reads the same records, and splitting them would let the two
+      # disagree about what an override is while both stayed green.
+      - name: No Contract gate is being overridden routinely
+        run: python3 .github/scripts/check-demotions.py
