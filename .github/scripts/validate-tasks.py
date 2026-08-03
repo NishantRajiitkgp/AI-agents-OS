@@ -26,7 +26,15 @@ from aios_state import (
 
 REQUIRED = {"id", "title", "status", "satisfies", "priority", "risk",
             "touches", "acceptance", "verify"}
-OPTIONAL = {"blocked_by", "constraints", "parent", "waiting_on", "reason", "duplicate_check"}
+OPTIONAL = {"blocked_by", "constraints", "parent", "waiting_on", "reason", "duplicate_check",
+            # Written by `aios done`, never by hand. It was missing from this list until the
+            # first task reached `done` through the binary, at which point the tool that wrote
+            # the record and the schema that judges it disagreed about whether the field
+            # exists — two implementations of one schema, which is the failure this repository
+            # keeps naming. Its *shape* is checked in exactly one place,
+            # check-verification-records.py, which re-runs the commands at the recorded
+            # commit. Checking it here as well would recreate the disagreement one level down.
+            "verified"}
 KNOWN = REQUIRED | OPTIONAL
 
 # Past `todo` the search should already have happened, so the record is required from the
