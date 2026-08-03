@@ -44,6 +44,8 @@ CONFORMING = '''\
 import json, os, sys
 from pathlib import Path
 
+STATES = {"todo", "doing", "review", "done", "waiting", "dropped"}
+
 def find_root(argv):
     if "--root" in argv:
         return Path(argv[argv.index("--root") + 1])
@@ -56,7 +58,7 @@ def find_root(argv):
 
 argv = sys.argv[1:]
 if "--version" in argv:
-    print("aios 0.0.0")
+    print("aios 0.1.0")
     sys.exit(0)
 
 root = find_root(argv)
@@ -71,12 +73,18 @@ if not config.is_file():
     print(f"could not run: no config at {config}", file=sys.stderr)
     sys.exit(2)
 
-verdict = "fail" if (root / "BROKEN").exists() else "pass"
-print("working...", file=sys.stderr)
+findings = []
+for task in sorted((root / "aios" / "tasks").glob("*.md")):
+    for line in task.read_text(encoding="utf-8").splitlines():
+        if line.startswith("status:") and line.split(":", 1)[1].strip() not in STATES:
+            findings.append(f"{task.name}: status {line.split(':', 1)[1].strip()}")
+
+verdict = "fail" if findings else "pass"
+print(f"aios validate: reading {root}", file=sys.stderr)
 if "--format" in argv and argv[argv.index("--format") + 1] == "json":
-    print(json.dumps({"verdict": verdict, "root": str(root)}))
+    print(json.dumps({"verdict": verdict, "root": str(root), "findings": findings}))
 else:
-    print(f"{verdict}: checked {root}")
+    print(f"{verdict}: {root}")
 sys.exit(1 if verdict == "fail" else 0)
 '''
 
@@ -91,6 +99,16 @@ class ContractCase(unittest.TestCase):
 
     SUBJECT_SOURCE = CONFORMING
 
+    #: The subcommand a host project calls, prepended to every invocation below.
+    #:
+    #: These checks invoked the executable bare until the first release build met them, on the
+    #: reading that a tool whose job is checking should check when told nothing else. The
+    #: binary reads being told nothing as a usage error instead, and argues it in a comment: a
+    #: tool that exits zero when told nothing teaches a script that calling it wrong is fine.
+    #: Both readings are defensible, so the disagreement was settled by giving the caller
+    #: something explicit to call rather than by making silence mean something.
+    COMMAND = ("validate",)
+
     #: Set by CI once a binary exists, so the same checks run against the real subject.
     #: Ignored by TestTheChecksCanFail, which must keep using stand-ins to stay meaningful.
     REAL = os.environ.get("AIOS_BINARY")
@@ -99,11 +117,24 @@ class ContractCase(unittest.TestCase):
         self.dir = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.dir, True)
         self.project = self.dir / "host-project"
-        (self.project / "aios").mkdir(parents=True)
+        (self.project / "aios" / "tasks").mkdir(parents=True)
         (self.project / ".git").mkdir()
         (self.project / "aios" / "config.yml").write_text("tier: prototype\n", encoding="utf-8")
         (self.project / "src").mkdir()
         self.subject = self.write_subject(self.SUBJECT_SOURCE)
+
+    def break_the_state(self) -> None:
+        """Give the project a finding a real subject can actually have.
+
+        This was an empty file named `BROKEN` at the root, which is a convention only a
+        stand-in could honour — no implementation would ever look for it, so the clause "a
+        failing check exits 1" could not be satisfied by the thing the clause is about. A
+        status outside the state machine is the substitute: it is defined by the template
+        rather than by any implementation, every subject has to recognise it to be capable of
+        failing at all, and it is what the build asserts the binary already refuses.
+        """
+        (self.project / "aios" / "tasks" / "T-0001.md").write_text(
+            "---\nid: T-0001\nstatus: nonsense\n---\n", encoding="utf-8")
 
     def write_subject(self, source: str, name: str = "aios-standin.py") -> Path:
         if self.REAL and source is self.SUBJECT_SOURCE:
@@ -123,8 +154,9 @@ class ContractCase(unittest.TestCase):
         command = ([str(target)] if self.REAL and target == self.subject
                    else [sys.executable, str(target)])
         return subprocess.run(
-            [*command, *args], cwd=str(cwd or self.project), capture_output=True, text=True,
-            encoding="utf-8", errors="replace", env=environment)
+            [*command, *self.COMMAND, *args], cwd=str(cwd or self.project),
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            env=environment)
 
 
 class TestExitCodes(ContractCase):
@@ -134,7 +166,7 @@ class TestExitCodes(ContractCase):
         self.assertEqual(self.invoke().returncode, PASSED)
 
     def test_a_failing_check_exits_one(self) -> None:
-        (self.project / "BROKEN").touch()
+        self.break_the_state()
         self.assertEqual(self.invoke().returncode, FAILED)
 
     def test_a_check_that_cannot_run_exits_two(self) -> None:
@@ -147,7 +179,7 @@ class TestExitCodes(ContractCase):
         cannot = self.invoke().returncode
         (self.project / "aios" / "config.yml").write_text("tier: prototype\n", encoding="utf-8")
         passes = self.invoke().returncode
-        (self.project / "BROKEN").touch()
+        self.break_the_state()
         fails = self.invoke().returncode
         self.assertEqual(len({cannot, passes, fails}), 3,
                          "pass, fail and could-not-run must be three distinct codes")
@@ -173,14 +205,21 @@ class TestOutput(ContractCase):
         self.assertEqual(payload["verdict"], "pass")
 
     def test_diagnostics_do_not_contaminate_the_machine_readable_stdout(self) -> None:
-        """A host capturing stdout must get the verdict and nothing else."""
+        """A host capturing stdout must get the verdict and nothing else.
+
+        Asserted as "stdout parses and stderr is not silent" rather than by looking for a
+        particular diagnostic. The stand-in printed the literal `working...`, and requiring
+        that of the subject would have made the clause a check on one implementation's
+        wording — which a real binary fails while conforming perfectly.
+        """
         result = self.invoke("--format", "json")
-        self.assertIn("working...", result.stderr)
-        self.assertNotIn("working...", result.stdout)
+        self.assertNotEqual(result.stderr.strip(), "",
+                            "a subject that says nothing cannot show where it says it")
+        self.assertEqual(json.loads(result.stdout)["verdict"], "pass")
 
     def test_diagnostics_are_on_stderr_in_human_mode_too(self) -> None:
         result = self.invoke()
-        self.assertIn("working...", result.stderr)
+        self.assertNotEqual(result.stderr.strip(), "")
 
 
 class TestRootDiscovery(ContractCase):
@@ -264,7 +303,7 @@ class TestTheHostProjectIsInAnotherEcosystem(ContractCase):
         """One of the two safe mappings §2 promises. Both must hold for every outcome."""
         for setup, expected_non_zero in (
             (lambda: None, False),
-            (lambda: (self.project / "BROKEN").touch(), True),
+            (self.break_the_state, True),
             (lambda: (self.project / "aios" / "config.yml").unlink(), True),
         ):
             with self.subTest(expected_non_zero=expected_non_zero):
@@ -297,12 +336,13 @@ VIOLATIONS = {
         ('no config at {config}", file=sys.stderr)\n    sys.exit(2)',
          'no config at {config}", file=sys.stderr)\n    sys.exit(7)', TestExitCodes),
     "§3 prints diagnostics to stdout":
-        ('print("working...", file=sys.stderr)', 'print("working...")', TestOutput),
+        ('print(f"aios validate: reading {root}", file=sys.stderr)',
+         'print(f"aios validate: reading {root}")', TestOutput),
     "§3 has no machine-readable mode":
         ('if "--format" in argv and argv[argv.index("--format") + 1] == "json":',
          "if False:", TestOutput),
     "§3 makes json the default":
-        ('print(f"{verdict}: checked {root}")',
+        ('print(f"{verdict}: {root}")',
          'print(json.dumps({"verdict": verdict}))', TestOutput),
     "§4 assumes the working directory is the root":
         ("    return None", "    return Path.cwd()", TestRootDiscovery),

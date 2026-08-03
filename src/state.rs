@@ -34,22 +34,36 @@ pub type Reading<T> = Result<T, CouldNotRun>;
 /// rather than guessing when there is no root above. A tool that silently treats the current
 /// directory as a project root will one day scaffold a task file into someone's home
 /// directory.
+/// The repository root: the nearest ancestor holding a `.git` entry (ADR-013 §4).
+///
+/// This keyed on `aios/config.yml` until the first cross-ecosystem proof run, and that is the
+/// one thing §4 spends a paragraph forbidding: a directory carrying a config but sitting
+/// outside any repository was accepted as a root, which is the guess rather than the refusal.
+/// Whether a config exists is a separate question, asked where the config is needed — and
+/// keeping the two apart is what makes `--config` mean anything.
 pub fn find_root(start: &Path) -> Reading<PathBuf> {
-    let mut current = if start.is_absolute() {
+    // Collected through `components()` so a relative start does not leave a trailing `.` in
+    // the path this returns. It is reported to callers in another ecosystem, who compare it.
+    let mut current: PathBuf = if start.is_absolute() {
         start.to_path_buf()
     } else {
         std::env::current_dir()
             .map_err(|e| CouldNotRun(format!("no working directory: {e}")))?
             .join(start)
-    };
+    }
+    .components()
+    .collect();
+
     loop {
-        if current.join("aios").join("config.yml").is_file() {
+        // A normal checkout has a `.git` directory; a worktree and a submodule have a `.git`
+        // file. The question is whether the entry is there, not what it is.
+        if current.join(".git").exists() {
             return Ok(current);
         }
         if !current.pop() {
             return Err(CouldNotRun(
-                "not inside an aios project: no aios/config.yml in this directory or any \
-                 above it. Run from inside the repository, or pass --root."
+                "not inside a repository: no .git in this directory or any above it. Run \
+                 from inside the checkout, or pass --root or AIOS_ROOT."
                     .into(),
             ));
         }
@@ -508,6 +522,34 @@ mod tests {
         assert!(Status::Done.settled());
         assert!(!Status::Review.settled());
         assert!(!Status::Todo.settled());
+    }
+
+    #[test]
+    fn the_root_is_the_repository_and_not_the_nearest_config() {
+        // ADR-013 §4's refusal clause, which is the one the contract spends a paragraph on.
+        // Keying discovery on the config made a directory carrying a config into a root even
+        // with no repository anywhere above it, and a caller invoking from the wrong place
+        // got a confident answer about the wrong project.
+        let base = std::env::temp_dir().join(format!("aios-root-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let repository = base.join("repository");
+        let deep = repository.join("src").join("nested");
+        fs::create_dir_all(&deep).unwrap();
+        fs::create_dir_all(repository.join(".git")).unwrap();
+
+        assert_eq!(find_root(&deep).unwrap(), repository, "walks upward for .git");
+
+        let decoy = base.join("decoy");
+        fs::create_dir_all(decoy.join("aios")).unwrap();
+        fs::write(decoy.join("aios").join("config.yml"), "tier: prototype\n").unwrap();
+        // Stated as "the decoy is not the answer" rather than "there is no answer", because
+        // the temporary directory's own ancestors are not this test's to know about.
+        assert!(
+            find_root(&decoy).map(|found| found != decoy).unwrap_or(true),
+            "a config outside any repository is not a root, it is a guess"
+        );
+
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]

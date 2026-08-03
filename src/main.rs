@@ -4,16 +4,13 @@
 //!
 //! The invocation contract this implements is ADR-013: exit 0 for pass, 1 for a check that
 //! failed, 2 for a check that could not run, and the repository root discovered by walking up
-//! for `aios/config.yml` rather than assumed to be the working directory. The 1-versus-2
-//! distinction is the one that matters. A tool that reports "could not run" as a failure
-//! trains people to ignore failures; one that reports it as a pass lets a broken check
-//! masquerade as a clean one, which is the failure this repository exists to prevent.
+//! for `.git` rather than assumed to be the working directory. The 1-versus-2 distinction is
+//! the one that matters. A tool that reports "could not run" as a failure trains people to
+//! ignore failures; one that reports it as a pass lets a broken check masquerade as a clean
+//! one, which is the failure this repository exists to prevent.
 //!
-//! NOT YET COMPILED. Every rust-lang.org host is filtered on the development machine's
-//! network, so there is no local toolchain and CI is the first compiler this will meet. The
-//! tests below and in each module are written to be run there, and until they have been, none
-//! of the tasks this implements is `done` in the sense this project means it — a state
-//! reached when a named command exits zero, not a claim anybody makes.
+//! Compiled and tested in CI only. Every rust-lang.org host is filtered on the development
+//! machine's network, so there is no local toolchain and CI is the only compiler this meets.
 
 mod commands;
 mod state;
@@ -58,6 +55,10 @@ const SUBCOMMANDS: &[Subcommand] = &[
         name: "check",
         summary: "run locally exactly what CI runs",
     },
+    Subcommand {
+        name: "validate",
+        summary: "report whether this project's state is sound, for a caller outside it",
+    },
 ];
 
 fn print_help() {
@@ -78,6 +79,7 @@ fn print_help() {
     println!("        `blocked` is not a state — it is read from blocked_by.");
     println!();
     println!("  --root PATH  use this repository root instead of discovering one");
+    println!("  --config F   read configuration from here instead of <root>/aios/config.yml");
     println!("  --format F   json, or human when omitted, where a subcommand offers both");
     println!("  --list       for `check`: name the steps instead of running them");
     println!("  --version    print the version");
@@ -95,6 +97,11 @@ fn take_option(args: &mut Vec<String>, flag: &str) -> Option<String> {
     let value = args.remove(position + 1);
     args.remove(position);
     Some(value)
+}
+
+/// An environment override, with an empty value read as absent rather than as a setting.
+fn from_env(name: &str) -> Option<String> {
+    env::var(name).ok().filter(|value| !value.is_empty())
 }
 
 fn take_flag(args: &mut Vec<String>, flag: &str) -> bool {
@@ -136,7 +143,13 @@ fn run() -> u8 {
     }
 
     args.remove(0);
-    let explicit_root = take_option(&mut args, "--root");
+
+    // ADR-013 §4 gives both overrides to the flag over the environment, so the environment is
+    // consulted only where the flag left nothing. An empty variable is treated as unset: an
+    // exported-but-empty AIOS_ROOT is what a shell script produces when its own lookup failed,
+    // and honouring it would turn that into a refusal naming the empty string.
+    let explicit_root = take_option(&mut args, "--root").or_else(|| from_env("AIOS_ROOT"));
+    let explicit_config = take_option(&mut args, "--config").or_else(|| from_env("AIOS_CONFIG"));
 
     // ADR-013 §3 names this `--format json`, and the first build to meet the conformance suite
     // spelled it `--json`. The ADR is what a host project reads and cannot be edited to match
@@ -144,9 +157,14 @@ fn run() -> u8 {
     // than quietly treated as human: a caller asking for a format this does not have wants an
     // error, not prose it is about to try to parse.
     let format = take_option(&mut args, "--format");
-    if args.iter().any(|a| a == "--format") {
-        eprintln!("aios {first}: --format takes a value: human or json");
-        return COULD_NOT_RUN;
+
+    // Each of these takes a value, and `take_option` leaves a valueless one where it lies so
+    // that it is reported here rather than silently read as the subcommand's argument.
+    for option in ["--root", "--config", "--format"] {
+        if args.iter().any(|a| a == option) {
+            eprintln!("aios {first}: {option} takes a value");
+            return COULD_NOT_RUN;
+        }
     }
     let json = match format.as_deref() {
         None | Some("human") => false,
@@ -160,10 +178,22 @@ fn run() -> u8 {
     let root = match commands::root_from(explicit_root.as_deref()) {
         Ok(root) => root,
         Err(err) => {
-            eprintln!("aios {first}: {err}");
+            eprintln!("aios {first}: could not run: {err}");
             return COULD_NOT_RUN;
         }
     };
+
+    // Asked once, here, rather than by each subcommand. A missing config is the textbook
+    // could-not-run of ADR-013 §2 — the outcome that gets silently read as a pass — and a tool
+    // that answers it in seven places answers it differently in one of them.
+    let config = commands::config_path(&root, explicit_config.as_deref());
+    if !config.is_file() {
+        eprintln!(
+            "aios {first}: could not run: no config at {}",
+            config.display()
+        );
+        return COULD_NOT_RUN;
+    }
 
     let outcome = match first.as_str() {
         "new" => match args.first().map(String::as_str) {
@@ -199,6 +229,7 @@ fn run() -> u8 {
                 .unwrap_or_else(|| "hygiene.yml".to_string());
             commands::check(&root, &workflow, list_only)
         }
+        "validate" => commands::validate(&root, json),
         _ => unreachable!("membership was checked above"),
     };
 

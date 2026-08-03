@@ -35,14 +35,23 @@ function check(description, condition, detail = "") {
   }
 }
 
-/** A scratch repository for the host project, rebuilt per scenario. */
+/** A scratch repository for the host project, rebuilt per scenario.
+ *
+ * `broken` used to write an empty file named BROKEN at the root, which no implementation
+ * would ever look for — so the clause "a failing check exits 1" could not be met by the kind
+ * of thing the clause is about. It now writes a task whose status is outside the state
+ * machine, which the template defines and every subject must recognise to be able to fail.
+ */
 function scratch({ broken = false, config = true } = {}) {
   const root = mkdtempSync(join(tmpdir(), "aios-host-"));
   mkdirSync(join(root, ".git"));
-  mkdirSync(join(root, "aios"));
+  mkdirSync(join(root, "aios", "tasks"), { recursive: true });
   mkdirSync(join(root, "src", "nested"), { recursive: true });
   if (config) writeFileSync(join(root, "aios", "config.yml"), "tier: prototype\n");
-  if (broken) writeFileSync(join(root, "BROKEN"), "");
+  if (broken) {
+    writeFileSync(join(root, "aios", "tasks", "T-0001.md"),
+      "---\nid: T-0001\nstatus: nonsense\n---\n");
+  }
   writeFileSync(join(root, "package.json"),
     JSON.stringify({ name: "host-project", scripts: { check: "node check.mjs" } }, null, 2));
   return root;
@@ -53,11 +62,17 @@ function scratch({ broken = false, config = true } = {}) {
 // whole harness reports every clause as violated when nothing was ever called.
 const batchStandIn = process.platform === "win32" && /\.(cmd|bat)$/i.test(executable);
 
+// The subcommand a host task runner calls. This harness invoked the executable bare until the
+// first release build met it, and the binary treats being told nothing as a usage error —
+// deliberately, so that a script calling it wrong hears about it. Rather than make silence
+// mean "check", the tool grew something explicit to call.
+const COMMAND = ["validate"];
+
 function invoke(root, args = [], { cwd = root, env = {} } = {}) {
   // Under a shell, Node passes the command through unquoted, so a path containing spaces is
   // read as a command plus arguments. Quoting is the shell's problem, not the contract's.
   const quote = (value) => (batchStandIn && value.includes(" ") ? `"${value}"` : value);
-  const result = spawnSync(quote(executable), args.map(quote), {
+  const result = spawnSync(quote(executable), [...COMMAND, ...args].map(quote), {
     cwd, encoding: "utf8", env: { ...process.env, ...env }, shell: batchStandIn,
   });
   if (result.error || result.status === null) {
@@ -107,8 +122,12 @@ console.log(`host-project: calling ${executable}\n`);
   check("--format json puts one parseable document on stdout", parsed !== null,
     `stdout was ${JSON.stringify(machine.stdout.slice(0, 80))}`);
   check("the verdict is readable without parsing prose", parsed?.verdict === "pass");
+  // Asserted as "stdout parses and stderr is not silent", not by looking for a particular
+  // diagnostic. The stand-in printed a literal `working...`, and requiring that of a subject
+  // would check one implementation's wording rather than the clause.
   check("diagnostics stay off the machine-readable stdout",
-    !machine.stdout.includes("working..."));
+    parsed !== null && machine.stderr.trim() !== "",
+    `stderr was ${JSON.stringify(machine.stderr.slice(0, 80))}`);
 }
 
 // ADR-013 §4 — root discovery upward, refused rather than guessed.

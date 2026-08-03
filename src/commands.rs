@@ -860,16 +860,69 @@ pub fn workflow_steps(text: &str) -> Vec<(String, String)> {
 
 pub fn root_from(explicit: Option<&str>) -> Reading<PathBuf> {
     match explicit {
+        // An explicit root is not asked for a config, because `--config` may be what puts one
+        // somewhere else. The two overrides are independent in ADR-013 §4 and were tangled
+        // here: a caller passing both got a refusal naming the file it had just relocated.
         Some(path) => {
             let candidate = PathBuf::from(path);
-            if candidate.join("aios").join("config.yml").is_file() {
+            if candidate.is_dir() {
                 Ok(candidate)
             } else {
-                Err(CouldNotRun(format!("{path}: no aios/config.yml there")))
+                Err(CouldNotRun(format!("{path}: not a directory")))
             }
         }
         None => state::find_root(Path::new(".")),
     }
+}
+
+/// Where configuration is read from: a fixed path under the root, overridable (ADR-013 §4).
+pub fn config_path(root: &Path, explicit: Option<&str>) -> PathBuf {
+    match explicit {
+        Some(path) => PathBuf::from(path),
+        None => root.join("aios").join("config.yml"),
+    }
+}
+
+/// The verdict a project in another ecosystem reads (ADR-013).
+///
+/// Every other subcommand answers a question about one task, for someone working inside the
+/// repository. This answers the only question a caller outside it has — is the state of this
+/// project sound — and its whole interface is the three exit codes. It exists because the
+/// first host project to call this tool had nothing to call: the conformance suite invoked
+/// the binary bare, and the binary treats being told nothing as a usage error, on the
+/// deliberate ground that a tool exiting zero when told nothing teaches a script that calling
+/// it wrong is fine. Both positions were right; what was missing was the subcommand.
+pub fn validate(root: &Path, json: bool) -> Reading<u8> {
+    let (tasks, broken) = load_tasks(root)?;
+    let problems = backlog_problems(root, &tasks, &broken);
+
+    // §3: diagnostics on stderr in both modes, so a host can capture stdout for the verdict
+    // and let this flow into its own log without a quiet flag.
+    eprintln!(
+        "aios validate: reading {} task(s) under {}",
+        tasks.len(),
+        root.display()
+    );
+
+    let verdict = if problems.is_empty() { "pass" } else { "fail" };
+    if json {
+        let findings: Vec<String> = problems
+            .iter()
+            .map(|problem| format!("\"{}\"", escape(problem)))
+            .collect();
+        println!(
+            "{{\"verdict\": \"{verdict}\", \"root\": \"{}\", \"findings\": [{}]}}",
+            escape(&root.display().to_string()),
+            findings.join(", ")
+        );
+    } else {
+        println!("{verdict}: {}", root.display());
+        for problem in &problems {
+            println!("  {problem}");
+        }
+    }
+
+    Ok(if problems.is_empty() { OK } else { FAILED })
 }
 
 #[cfg(test)]
@@ -1268,10 +1321,27 @@ mod tests {
         flags.sort();
         assert_eq!(
             flags,
-            ["--format", "--list", "--root"],
+            ["--config", "--format", "--list", "--root"],
             "the dispatcher reads a flag it did not before. If it can reach `done` past a \
              failing verify, M1-13 has stopped being true."
         );
+    }
+
+    #[test]
+    fn validate_separates_a_sound_project_from_a_broken_one() {
+        // The surface a caller in another ecosystem reads, so the thing under test is the
+        // exit code and nothing else. Both directions, because a `validate` that refused
+        // everything would satisfy the failing half on its own.
+        let fixture = Fixture::new("validate");
+        fixture.task("T-1111", "todo", "");
+        assert_eq!(validate(&fixture.root, false).unwrap(), OK);
+
+        fs::write(
+            fixture.root.join("aios").join("tasks").join("T-2222.md"),
+            "---\nid: T-2222\nstatus: nonsense\n---\n",
+        )
+        .unwrap();
+        assert_eq!(validate(&fixture.root, true).unwrap(), FAILED);
     }
 
     #[test]
