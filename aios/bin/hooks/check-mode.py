@@ -448,10 +448,28 @@ def decide(event: dict) -> dict:
                              f"visible decisions, which is the point of the mode."}
 
 
+def log_failure(stage: str, exc: BaseException) -> None:
+    """Append a traceback beside the repository, best-effort and never raising.
+
+    The hook's stderr goes nowhere a person can read: the editor reports an exit code and
+    discards the rest. So a failure here has been invisible twice, and both times the visible
+    symptom was every write refused with a number attached. A file is the only channel out.
+    """
+    try:
+        import traceback
+        root = Path(os.environ.get("CURSOR_PROJECT_DIR") or os.getcwd())
+        with (root / ".aios-hook-error.log").open("a", encoding="utf-8") as handle:
+            handle.write(f"--- check-mode {stage} at {time.time():.3f}\n")
+            handle.write("".join(traceback.format_exception(exc)))
+    except Exception:
+        pass
+
+
 def main() -> int:
     try:
         event = read_event()
     except Exception as exc:
+        log_failure("read_event", exc)
         # A control that cannot read its input must say so rather than decide. Denying here
         # would repeat the incident; allowing silently would be a control that is absent
         # without anyone noticing, so it allows *and* reports.
@@ -461,6 +479,7 @@ def main() -> int:
     try:
         decision = decide(event)
     except Exception as exc:
+        log_failure("decide", exc)
         # Same policy as unreadable input, for the same reason and one more. This hook is
         # registered failClosed, so an exception is not "the control did not apply" — it is
         # every write in the editor refused until someone reads a stack trace. That has
@@ -469,10 +488,27 @@ def main() -> int:
         return respond.allow(event, f"check-mode failed while deciding ({exc}); it allowed "
                                     f"this call and enforced nothing.")
 
-    if decision.get("permission") == "deny":
-        return respond.deny(event, decision["user_message"], decision["agent_message"])
-    return respond.allow(event)
+    # Answering is its own failure mode, separate from deciding. Everything above this line was
+    # already guarded; the reply was not, and a reply that raises is indistinguishable from a
+    # control that refused — the editor reports an exit code either way.
+    try:
+        if decision.get("permission") == "deny":
+            return respond.deny(event, decision["user_message"], decision["agent_message"])
+        return respond.allow(event)
+    except Exception as exc:
+        log_failure("respond", exc)
+        return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except BaseException as exc:
+        # The last resort, and the one that matters. This hook is registered failClosed, so any
+        # escape from here is not "the control did not apply" — it is every write in the editor
+        # refused until somebody reads a stack trace that was never written down. Three
+        # incidents in this repository have that shape.
+        log_failure("toplevel", exc)
+        raise SystemExit(0) from None

@@ -353,6 +353,59 @@ class TestWriteLease(unittest.TestCase):
         self.assertIn("deny", out)
 
 
+class TestTheHookHasNoWayToExitNonZero(unittest.TestCase):
+    """The property `failClosed: true` assumes and nothing checked.
+
+    Registered fail-closed, an unhandled exit is not "the control did not apply" — it is every
+    write in the editor refused, with an exit code standing in for a reason. That happened on
+    2026-08-03 and could not be diagnosed, because the one path that had never been guarded
+    was the reply, and a hook's stderr reaches nobody.
+
+    Exit 2 is excluded too. It is a real answer, but only to the Claude Code shape, and these
+    events all carry `cursor_version`.
+    """
+
+    def setUp(self) -> None:
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        (self.dir / "aios").mkdir(parents=True)
+        (self.dir / "aios" / "config.yml").write_text(
+            "tier: prototype\nparallelism:\n  write_lease_minutes: 2\n", encoding="utf-8")
+
+    def feed(self, raw: bytes) -> int:
+        result = subprocess.run(
+            [sys.executable, str(HOOK)], input=raw, capture_output=True,
+            env={**dict(__import__("os").environ), "CURSOR_PROJECT_DIR": str(self.dir)})
+        return result.returncode
+
+    def test_hostile_input_never_refuses_by_accident(self) -> None:
+        for name, raw in {
+            "empty": b"",
+            "not json": b"\xef\xbb\xbfnot json at all\r\n",
+            "json but not an object": b"[1, 2, 3]\r\n",
+            "object with nothing in it": b"{}\r\n",
+            "no bom": json.dumps({"tool_name": "Write"}).encode(),
+            "fields of the wrong type": json.dumps(
+                {"tool_name": "Write", "tool_input": "a string", "session_id": 7}).encode(),
+            "invalid utf-8": b"\xef\xbb\xbf{\"tool_name\": \"\xff\xfe\"}\r\n",
+        }.items():
+            with self.subTest(input=name):
+                self.assertEqual(self.feed(raw), 0, f"{name} produced a non-zero exit")
+
+    def test_an_unreadable_config_does_not_become_a_refusal(self) -> None:
+        """The 2026-07-31 outage exactly: a half-written config, and a control that answered
+        'I cannot parse this' with 'no'."""
+        (self.dir / "aios" / "config.yml").write_text("modes:\n  - [\n", encoding="utf-8")
+        self.assertEqual(self.feed(write_event("session-a", str(self.dir / "a.rs"))), 0)
+
+    def test_a_failure_leaves_something_to_read(self) -> None:
+        """The diagnosis channel, not the control. Stderr is discarded by the editor, so if
+        the hook ever fails again in a session, the traceback has to survive somewhere."""
+        source = HOOK.read_text(encoding="utf-8")
+        self.assertIn(".aios-hook-error.log", source)
+        self.assertIn("def log_failure", source)
+
+
 class TestThisRepository(unittest.TestCase):
     def test_the_configured_window_sits_between_the_two_intervals(self) -> None:
         """Measured: session identity is per chat. Too long and the next chat is refused;

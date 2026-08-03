@@ -108,7 +108,7 @@ ratchets:
   - id: tests_declared
     title: Test functions declared under tests/
     direction: higher_is_better
-    baseline: 792
+    baseline: 795
     note: >-
       Counted from source rather than from a run, so skipping a test does not move it — that
       is the test-integrity audit's job, and these are deliberately different failures. The

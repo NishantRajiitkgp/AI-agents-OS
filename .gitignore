@@ -15,6 +15,10 @@ __pycache__/
 # Scratch files. The development machine reads CI over the REST API with throwaway scripts,
 # and `git add -A` has swept two of them into commits already.
 .tmp-*
+# Written by check-mode.py when it fails. The editor reports a hook's exit code and discards
+# its stderr, so this file is the only channel a failure has out — and a failure here is every
+# write refused, which is a bad thing to have to guess at.
+.aios-hook-error.log
 fmt.patch
 
 # Local tool and editor state that is per-machine rather than per-project.
