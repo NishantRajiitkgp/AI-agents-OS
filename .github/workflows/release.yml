@@ -96,14 +96,37 @@ jobs:
           name: aios-x86_64-unknown-linux-musl
           path: dist
 
+      # The first run of this job stopped here, which is the outcome it exists for. The runner
+      # image does not keep Rust where rustup puts it — CARGO_HOME and RUSTUP_HOME point at a
+      # system path — so deleting the rustup-managed homes left cargo on PATH, and the job
+      # refused to prove a runtime-free invocation on a machine that still had the runtime.
+      #
+      # Hence removal by every location the image might use, then by resolved path for whatever
+      # survives, and only then the assertion. `set -e` is deliberately absent: the loops below
+      # end on a false test, and the whole point of the step is the explicit exit, not an
+      # incidental one. The iteration cap is there so a file that cannot be removed fails the
+      # job instead of hanging it.
       - name: Remove the toolchain, then prove it is gone
         run: |
-          set -euo pipefail
+          set -uo pipefail
           rustup self uninstall -y || true
-          sudo rm -rf "$HOME/.cargo" "$HOME/.rustup" /usr/local/rustup /usr/local/cargo
+          for home in "${CARGO_HOME:-}" "${RUSTUP_HOME:-}" "$HOME/.cargo" "$HOME/.rustup" \
+                      /usr/local/cargo /usr/local/rustup /usr/share/rust /opt/rust; do
+            [ -n "$home" ] && sudo rm -rf "$home"
+          done
+          for tool in cargo rustc rustup; do
+            attempts=0
+            while found=$(command -v "$tool" 2>/dev/null); do
+              sudo rm -f "$found" || break
+              hash -r 2>/dev/null || true
+              attempts=$((attempts + 1))
+              [ "$attempts" -gt 10 ] && break
+            done
+          done
           for tool in cargo rustc rustup; do
             if command -v "$tool" >/dev/null 2>&1; then
-              echo "$tool is still on PATH; the proof below would be worthless" >&2
+              where=$(command -v "$tool")
+              echo "::error::$tool survives at $where; nothing below this would be proof."
               exit 1
             fi
           done
