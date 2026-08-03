@@ -876,6 +876,8 @@ pub fn root_from(explicit: Option<&str>) -> Reading<PathBuf> {
 mod tests {
     use super::*;
     use crate::state::Risk;
+    use std::fs;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn task(id: &str, status: Status, priority: i64, risk: Risk, blocked: &[&str]) -> Task {
         Task {
@@ -1098,5 +1100,201 @@ mod tests {
         let text = "jobs:\n  hygiene:\n    steps:\n      - uses: actions/checkout@v4\n\
                     \x20     - name: One\n        run: echo one\n";
         assert_eq!(workflow_steps(text).len(), 1);
+    }
+
+    // --- M1-11 and M1-13 --------------------------------------------------------------
+    //
+    // The two Done-whens that need a repository rather than a task list: `next` refuses on
+    // state spread across several files, and `done` records the commit it ran at.
+
+    /// A throwaway repository, removed when the test that made it ends.
+    struct Fixture {
+        root: PathBuf,
+    }
+
+    impl Fixture {
+        fn new(label: &str) -> Fixture {
+            // Tests share one process and run in parallel, so the pid alone does not
+            // separate them.
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
+            let root = std::env::temp_dir().join(format!(
+                "aios-{label}-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            let _ = fs::remove_dir_all(&root);
+            fs::create_dir_all(root.join("aios").join("tasks")).unwrap();
+            fs::write(root.join("aios").join("config.yml"), "tier: prototype\n").unwrap();
+            Fixture { root }
+        }
+
+        fn git(&self, args: &[&str]) {
+            let out = Command::new("git")
+                .args(args)
+                .current_dir(&self.root)
+                .output()
+                .expect("these tests need git on PATH, and so does `aios done`");
+            assert!(
+                out.status.success(),
+                "git {args:?} failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+
+        /// Identity and signing are set on this repository rather than inherited. A CI runner
+        /// has no identity configured, and a fixture that depends on the developer's global
+        /// git config passes or fails for reasons that have nothing to do with the code.
+        fn commit(&self) -> &Fixture {
+            self.git(&["init", "--quiet"]);
+            self.git(&["config", "user.email", "fixture@example.invalid"]);
+            self.git(&["config", "user.name", "fixture"]);
+            self.git(&["config", "commit.gpgsign", "false"]);
+            self.git(&["add", "-A"]);
+            self.git(&["commit", "--quiet", "-m", "fixture"]);
+            self
+        }
+
+        fn task(&self, id: &str, status: &str, extra: &str) -> PathBuf {
+            let path = self.root.join("aios").join("tasks").join(format!("{id}.md"));
+            fs::write(
+                &path,
+                format!(
+                    "---\nid: {id}\ntitle: fixture {id}\nstatus: {status}\nrisk: low\n\
+                     priority: 1\n{extra}---\n\nbody\n"
+                ),
+            )
+            .unwrap();
+            path
+        }
+
+        fn incident(&self, name: &str, blocks_work: bool) {
+            let dir = self.root.join("aios").join("incidents");
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(
+                dir.join(name),
+                format!("---\ndate: 2020-01-01\nblocks_work: {blocks_work}\n---\n\nbody\n"),
+            )
+            .unwrap();
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn a_failing_verify_leaves_the_task_in_review() {
+        let fixture = Fixture::new("failing-verify");
+        let path = fixture.task("T-aaaa", "review", "verify:\n  - exit 1\n");
+        fixture.commit();
+
+        let outcome = done(&fixture.root, "T-aaaa").expect("done should run, not error");
+        assert_eq!(outcome, FAILED, "a failing verify reached done");
+
+        let after = fs::read_to_string(&path).unwrap();
+        assert!(
+            after.contains("status: review"),
+            "the task moved anyway:\n{after}"
+        );
+        assert!(
+            !after.contains("verified:"),
+            "a record was written for a verify that failed, which is the one thing the \
+             record must never say:\n{after}"
+        );
+    }
+
+    #[test]
+    fn a_passing_verify_moves_the_task_and_records_the_commit() {
+        // The control for the test above. Without it, a `done` that refused everything would
+        // satisfy the refusal tests while the mechanism was entirely broken.
+        let fixture = Fixture::new("passing-verify");
+        let path = fixture.task("T-bbbb", "review", "verify:\n  - exit 0\n");
+        fixture.commit();
+
+        let outcome = done(&fixture.root, "T-bbbb").expect("done should run, not error");
+        assert_eq!(outcome, OK, "a passing verify did not reach done");
+
+        let after = fs::read_to_string(&path).unwrap();
+        assert!(after.contains("status: done"), "{after}");
+        assert!(
+            after.contains("verified:"),
+            "nothing was recorded, so CI has nothing to re-check:\n{after}"
+        );
+    }
+
+    #[test]
+    fn one_failure_among_several_commands_is_enough() {
+        // Reading only the last exit code passes this task and is the obvious wrong way to
+        // write the loop.
+        let fixture = Fixture::new("mixed-verify");
+        let path = fixture.task(
+            "T-cccc",
+            "review",
+            "verify:\n  - exit 0\n  - exit 1\n  - exit 0\n",
+        );
+        fixture.commit();
+
+        assert_eq!(done(&fixture.root, "T-cccc").unwrap(), FAILED);
+        assert!(fs::read_to_string(&path).unwrap().contains("status: review"));
+    }
+
+    #[test]
+    fn the_dispatcher_reads_no_flag_that_could_skip_verification() {
+        // M1-13's Done-when is that no argument combination reaches `done` past a failing
+        // verify. It holds because no such argument exists — and an absence is exactly what a
+        // later edit restores without anyone noticing, which is why it needs a test at all.
+        // The test module is cut off first, so this reads the dispatcher and not the tests
+        // for the dispatcher.
+        let source = include_str!("main.rs");
+        let dispatcher = source.split("#[cfg(test)]").next().unwrap_or(source);
+        let mut flags: Vec<&str> = Vec::new();
+        for piece in dispatcher.split("take_flag(&mut args, \"").skip(1) {
+            flags.push(&piece[..piece.find('"').expect("a flag literal is quoted")]);
+        }
+        flags.sort();
+        assert_eq!(
+            flags,
+            ["--json", "--list"],
+            "the dispatcher reads a flag it did not before. If it can reach `done` past a \
+             failing verify, M1-13 has stopped being true."
+        );
+    }
+
+    #[test]
+    fn next_refuses_a_backlog_that_does_not_hold_together() {
+        let fixture = Fixture::new("dangling-blocker");
+        fixture.task("T-dddd", "todo", "blocked_by:\n  - T-nope\n");
+
+        let outcome = next(&fixture.root, false).expect("next should run, not error");
+        assert_eq!(
+            outcome, FAILED,
+            "a blocked_by naming no task must stop the selector rather than be skipped"
+        );
+    }
+
+    #[test]
+    fn next_refuses_while_an_incident_blocks_work() {
+        let fixture = Fixture::new("blocking-incident");
+        fixture.task("T-eeee", "todo", "");
+        fixture.incident("2020-01-01-blocking.md", true);
+
+        assert_eq!(
+            next(&fixture.root, false).unwrap(),
+            FAILED,
+            "an open incident declaring blocks_work did not stop the selector"
+        );
+    }
+
+    #[test]
+    fn next_offers_work_when_the_backlog_holds_and_nothing_blocks() {
+        // The control for both refusals above: they have to fail for their own reason rather
+        // than because `next` fails on any fixture at all.
+        let fixture = Fixture::new("valid-backlog");
+        fixture.task("T-ffff", "todo", "");
+        fixture.incident("2020-01-01-closed.md", false);
+
+        assert_eq!(next(&fixture.root, false).unwrap(), OK);
     }
 }
