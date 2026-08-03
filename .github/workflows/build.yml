@@ -74,6 +74,9 @@ jobs:
       # that cannot run rustfmt. Formatting the tree and asking git for the difference reports
       # the identical failure as a patch that applies. The tree is a throwaway checkout, so
       # writing to it costs nothing and the run still fails whenever formatting was needed.
+      # The pathspec is not decoration. The lockfile step above writes into this same tree, and
+      # an unscoped diff reported that as a formatting failure — a gate answering under its own
+      # name for a problem that is not its own, which is worse than one that stays quiet.
       - name: Formatting
         if: ${{ !cancelled() }}
         shell: bash
@@ -81,7 +84,7 @@ jobs:
           py=$(command -v python3 || command -v python)
           cargo fmt
           "$py" .github/scripts/report-diagnostics.py --title "cargo fmt" -- \
-            git diff --no-color --exit-code
+            git diff --no-color --exit-code -- '*.rs'
 
       # Warnings are denied rather than reported. A warning nobody must act on is a warning
       # everybody learns to scroll past.
