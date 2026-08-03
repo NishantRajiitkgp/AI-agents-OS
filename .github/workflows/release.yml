@@ -35,7 +35,12 @@ jobs:
           # which is the failure a host project would report as "the OS imposed a runtime".
           - { os: ubuntu-latest,  target: x86_64-unknown-linux-musl, ext: '' }
           - { os: macos-latest,   target: aarch64-apple-darwin,      ext: '' }
-          - { os: macos-13,       target: x86_64-apple-darwin,       ext: '' }
+          # x86_64 macOS is cross-compiled from the arm64 runner rather than scheduled on an
+          # Intel host. Apple ships one SDK for both architectures, so an Intel image would add
+          # nothing but a dependency on a label whose retirement someone else schedules — and a
+          # matrix leg naming a retired label does not fail loudly, it fails to schedule, and
+          # takes the proof job down with it through `needs`.
+          - { os: macos-latest,   target: x86_64-apple-darwin,       ext: '' }
           - { os: windows-latest, target: x86_64-pc-windows-msvc,    ext: '.exe' }
     runs-on: ${{ matrix.os }}
     steps:

@@ -37,6 +37,22 @@ jobs:
           rustc --version
           cargo --version
 
+      # Cargo.lock is machine-derived, and aios/dependencies.yml declined to hand-write one on
+      # the grounds that inventing a file whose whole purpose is to be generated is worse than
+      # not having it. CI has the toolchain this network cannot reach, so CI generates it and
+      # publishes the difference as a patch whenever the committed lockfile is absent or stale.
+      # release.yml builds with --locked; without this step a stale lockfile would surface as a
+      # failed release, which is the most expensive place to learn it.
+      - name: Lockfile is committed and current
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          py=$(command -v python3 || command -v python)
+          cargo generate-lockfile
+          git add --intent-to-add Cargo.lock
+          "$py" .github/scripts/report-diagnostics.py --title "Cargo.lock" -- \
+            git diff --no-color --exit-code -- Cargo.lock
+
       # These four run independently of each other. A step that stops the steps below it does
       # not report less, it reports later — and on the run where formatting failed, "does the
       # binary compile at all" went unanswered for three pushes. Each still fails the job;

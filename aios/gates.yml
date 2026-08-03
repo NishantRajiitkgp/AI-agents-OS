@@ -41,6 +41,18 @@ gates:
     workflow: build.yml
     step: Toolchain resolves from rust-toolchain.toml, with no setup step
 
+  - id: build.lockfile_current
+    title: Lockfile is committed and current
+    class: contract
+    blocking: step
+    workflow: build.yml
+    step: Lockfile is committed and current
+    note: >-
+      The lockfile is the one file here that has to be written by a machine this network cannot
+      reach, so CI writes it and publishes the difference as an annotation — the only channel
+      that is readable without a token. A hand-written lockfile would be an invention wearing
+      the name of the artefact whose entire value is that nobody invented it.
+
   - id: build.format
     title: Formatting
     class: contract
