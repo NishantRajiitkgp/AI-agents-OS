@@ -303,14 +303,11 @@ pub fn active_requirements(root: &Path) -> Reading<Vec<String>> {
             if let Some(heading) = trimmed.strip_prefix("## ") {
                 current = requirement_id(heading.split_whitespace().next().unwrap_or(""))
                     .map(str::to_string);
-            } else if let Some(id) = current.clone() {
-                if let Some(value) = trimmed.strip_prefix("**Status:**") {
-                    if value.trim() == "active" {
-                        ids.push(id);
-                    }
-                    // The first Status in a section is the section's. Anything after it
-                    // belongs to prose, and reading that would let a quoted example count.
-                    current = None;
+            } else if let Some(value) = trimmed.strip_prefix("**Status:**") {
+                // The first Status in a section is the section's. Anything after it belongs to
+                // prose, and reading that would let a quoted example count.
+                if let Some(id) = current.take().filter(|_| value.trim() == "active") {
+                    ids.push(id);
                 }
             }
         }
@@ -324,7 +321,9 @@ pub fn active_requirements(root: &Path) -> Reading<Vec<String>> {
 fn requirement_id(candidate: &str) -> Option<&str> {
     let (area, number) = candidate.split_once('-')?;
     let area_ok = area.starts_with(|c: char| c.is_ascii_uppercase())
-        && area.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit());
+        && area
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit());
     let number_ok = !number.is_empty() && number.chars().all(|c| c.is_ascii_digit());
     (area_ok && number_ok).then_some(candidate)
 }
