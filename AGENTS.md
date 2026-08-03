@@ -9,14 +9,14 @@ what cannot be derived by reading the repository.
 
 ## Status
 
-`src/main.rs` is a dispatch skeleton: every subcommand is declared and none is implemented,
-each naming the milestone that fills it in. `tests/` covers the provisional gate scripts
-under `.github/scripts/`, not the binary. The build plan is `task.md`, a bootstrap that is
-retired once the binary can select its own next task.
+The binary reads project state, selects the next task, and moves one to `done` only after
+re-running its verification commands. Its remaining subcommands are declared and refuse, each
+naming what fills it in. `tests/` covers the provisional gate scripts under `.github/scripts/`
+and the binary's invocation contract, not its internals.
 
-Gate logic currently runs in `.github/workflows/hygiene.yml` as inline runner steps, because
-the binary that should own it does not exist. It moves into the binary when it does; two
-implementations of one gate can disagree.
+Gate logic still runs in `.github/workflows/hygiene.yml` as inline runner steps, because the
+binary does not own it yet. It moves into the binary when it can; two implementations of one
+gate can disagree.
 
 ## Where state lives
 

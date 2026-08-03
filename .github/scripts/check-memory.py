@@ -76,11 +76,11 @@ INSTRUCTIONS = [
     "docs/runbooks/**/*.md",
 ]
 
-# Checked for links only. `task.md` is here because it is a plan rather than an instruction —
-# and its links are checked precisely because they have broken before, when the tree was
-# flattened and every relative path in it moved at once.
+# Checked for links only. These describe or point at things rather than instructing anyone, so
+# a broken link is the failure worth catching — and it is worth catching because it has
+# happened, when the tree was flattened and every relative path in it moved at once.
 NAVIGATION = INSTRUCTIONS + [
-    "task.md", "docs/architecture.md",
+    "docs/architecture.md",
     "aios/requirements/**/*.md", "aios/tasks/**/*.md",
     "aios/incidents/**/*.md", "aios/bin/**/*.md",
     "docs/decisions/**/*.md",

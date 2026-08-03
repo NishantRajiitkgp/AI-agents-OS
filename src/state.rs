@@ -291,35 +291,42 @@ pub fn active_requirements(root: &Path) -> Reading<Vec<String>> {
             continue;
         }
         let text = read_to_string(&path)?;
+        // `## STATE-6 — title`, with `**Status:** active` in the paragraph beneath it. This
+        // read markdown *tables* until the first time anything depended on the answer. No
+        // requirement file has ever contained a table, so the list came back empty — and an
+        // empty list is the single value that switches the `satisfies` check off, because a
+        // project in its first hour has tasks and no requirements and must not be blocked by
+        // that. The check was therefore not lenient, it was absent, and looked identical.
+        let mut current: Option<String> = None;
         for line in text.lines() {
-            // `| REQ-1 | ... | active | ...` — the table form the requirement files use. The
-            // ID and the status are read positionally from the row rather than by parsing
-            // markdown, because the schema validator already refuses a row of the wrong shape.
             let trimmed = line.trim();
-            if !trimmed.starts_with('|') {
-                continue;
-            }
-            let cells: Vec<&str> = trimmed
-                .trim_matches('|')
-                .split('|')
-                .map(str::trim)
-                .collect();
-            if cells.len() < 2 {
-                continue;
-            }
-            let id = cells[0];
-            if id.is_empty() || id.starts_with("---") || id.eq_ignore_ascii_case("id") {
-                continue;
-            }
-            let active = cells.contains(&"active");
-            if active {
-                ids.push(id.to_string());
+            if let Some(heading) = trimmed.strip_prefix("## ") {
+                current = requirement_id(heading.split_whitespace().next().unwrap_or(""))
+                    .map(str::to_string);
+            } else if let Some(id) = current.clone() {
+                if let Some(value) = trimmed.strip_prefix("**Status:**") {
+                    if value.trim() == "active" {
+                        ids.push(id);
+                    }
+                    // The first Status in a section is the section's. Anything after it
+                    // belongs to prose, and reading that would let a quoted example count.
+                    current = None;
+                }
             }
         }
     }
     ids.sort();
     ids.dedup();
     Ok(ids)
+}
+
+/// `AREA-7` — the identifier shape validate-requirements.py enforces.
+fn requirement_id(candidate: &str) -> Option<&str> {
+    let (area, number) = candidate.split_once('-')?;
+    let area_ok = area.starts_with(|c: char| c.is_ascii_uppercase())
+        && area.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit());
+    let number_ok = !number.is_empty() && number.chars().all(|c| c.is_ascii_digit());
+    (area_ok && number_ok).then_some(candidate)
 }
 
 /// Incidents that declare `blocks_work: true`.
@@ -556,6 +563,30 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn active_requirements_are_read_from_the_form_the_files_are_written_in() {
+        let root = std::env::temp_dir().join(format!("aios-req-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("aios").join("requirements")).unwrap();
+        fs::write(
+            root.join("aios").join("requirements").join("state.md"),
+            "# STATE\n\n\
+             ## STATE-1 — Active\n\n**Status:** active\n**Rationale:** because\n\n\
+             ## STATE-9 — Deferred\n\n**Status:** deferred\n**Reason:** later\n\n\
+             ## Not a requirement\n\n**Status:** active\n",
+        )
+        .unwrap();
+
+        let found = active_requirements(&root).unwrap();
+        assert_eq!(
+            found,
+            vec!["STATE-1".to_string()],
+            "one active requirement, and a heading that is not an identifier is not one"
+        );
+
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

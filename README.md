@@ -9,15 +9,23 @@ The premise is that an agent applies facts reliably and follows written procedur
 unreliably, so the system is built out of facts and checks rather than instructions and good
 intentions.
 
-## Status: not usable yet
+## Status: early, and not yet tried on anything
 
-There is no quickstart, because nothing builds. `src/` and `tests/` are empty and the `aios`
-binary does not exist. This section will show commands when there are commands to show, and
-a check keeps it honest: every command this file displays has to be one that CI executes.
+The `aios` binary builds and ships. `v0.1.0` produced four platform binaries, deleted the Rust
+toolchain from the runner and refused to continue until it was gone, then called the shipped
+binary from a dependency-free project in another ecosystem — which is the claim this design
+lives or dies on. There is still no quickstart, because a quickstart is a promise about
+stability nothing here has earned. A check keeps this section honest: every command this file
+displays has to be one that CI executes.
 
-Current milestone is `M1`, the walking skeleton. The build plan and its running state are in
-`task.md`, which is a bootstrap — it is retired once the binary can select its own next task,
-and if it is still being edited late in the project, that is the finding rather than the plan.
+What the binary can do is read the project's state, refuse it when it is malformed, select the
+next task deterministically, and move a task to `done` only after re-running its verification
+commands. What it cannot do yet is own the gate logic, which still runs as inline steps in CI.
+
+There is no bootstrap plan any more. It was a hand-written checklist for building the thing
+meant to replace it, and it retired into `aios/tasks/` once the binary could select its own
+next task — which is the condition it was written to be deleted on. What is open is what the
+state directory says is open.
 
 ## What is here now
 

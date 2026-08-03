@@ -50,10 +50,14 @@ ratchets:
   - id: root_markdown_files
     title: Markdown files at the repository root
     direction: lower_is_better
-    baseline: 4
+    baseline: 3
     note: >-
       Capped at 5 by a Contract gate. The ratchet is what stops the fifth slot being spent
       casually, since the cap alone says nothing until it is already gone.
+
+      Tightened 4 → 3 when task.md was retired into aios/tasks/. Tightening on an improvement
+      is not optional here: leaving the baseline at 4 would bank the freed slot as permanent
+      headroom, which is the slack this metric exists to refuse.
 
   - id: todo_markers
     title: Deferred-work markers in tracked code

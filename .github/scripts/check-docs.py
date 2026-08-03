@@ -65,7 +65,6 @@ BY_LOCATION = {
     "README.md": CHECKED,
     "aios/glossary.md": CHECKED,
     "aios/open-questions.md": CHECKED,
-    "task.md": CHECKED,
     "docs/architecture.md": DATED,
 }
 
