@@ -675,11 +675,35 @@ checks, tiers. Gates on top of unreliable state are decoration.
     too — a genuine record passes, a task that is not `done` is not asked for one, and an empty
     backlog reports that it checked nothing rather than that everything is fine.
 
-- [ ] **M1-18** Run the loop once, end to end, then retire this file
+- [~] **M1-18** Run the loop once, end to end, then retire this file
   - `aios next → start → implement → verify → submit → done → CI green → merge` on a trivial
     task in the `P0-1` project.
   - **Done when:** the loop completes, and every remaining task in this document has been
     migrated to real task files under `aios/tasks/`. This file is then deleted.
+  - **The loop ran, on `T-a141`.** `next → start → implement → verify → submit → done`, then
+    CI green. The binary was the released `v0.1.0` artifact, checksum-verified, running on the
+    machine whose network cannot reach the toolchain that built it.
+  - **It refused before it selected anything**, because the toolchain incident still declared
+    `blocks_work`, and it named the file and the two ways out. That refusal was correct and
+    the resolution changed a measured claim: the incident recorded that no published binary
+    could be fetched here by any route, and one had just been fetched with a matching
+    checksum. Appended rather than edited, since incidents are append-only; whether the
+    earlier measurement was wrong or the network changed is not knowable from here, and
+    guessing between them would mean picking the more flattering answer.
+  - **The loop found two disagreements that only running it could find.** `aios done` writes a
+    `verified:` block, and the task-schema validator rejected it as an unknown field on a
+    closed list — the binary that writes the record and the schema that judges it disagreeing
+    about whether the field exists, while `check-verification-records.py` had been reading it
+    by that name all along. Nothing could have surfaced it earlier: no task had ever reached
+    `done` through the binary. Then the ratchet stopped the push, because deleting the
+    tripwire took `tests_declared` from 785 to 784 and a suite that shrinks by any route is
+    exactly what that metric watches. Declared with the value it moved from and what was
+    bought, which is the mechanism working rather than being worked around.
+  - **What is left is the migration**, and it is not clerical. Every task file needs
+    `satisfies`, and the only requirement area that exists is `state.md` — nothing covers the
+    invocation contract, containment, or agent ergonomics, so the open M2, M4 and M6 tasks
+    have no requirement to name. `T-a141` already had to reach for `STATE-6` and say so in
+    its own body. Writing those areas is requirements work, not a file move.
 
 ---
 
@@ -1407,7 +1431,7 @@ after M3 means the classes are miscalibrated, and the fix is reclassification, n
     where it was never meant to block. It proposes; the answer is sometimes promotion to
     Ratchet, and a script cannot tell a check nobody values from one everybody meant to fix.
 
-- [~] **M3-11** Build the release pipeline and prove the cross-ecosystem invocation contract
+- [x] **M3-11** Build the release pipeline and prove the cross-ecosystem invocation contract
   - The direct price of the hard constraint in
     [ADR-005](docs/decisions/ADR-005-reference-implementation-ecosystem.md), and the closure of
     the deferral in [ADR-001](docs/decisions/ADR-001-first-project-is-the-os-itself.md) §4.
@@ -1461,6 +1485,29 @@ after M3 means the classes are miscalibrated, and the fix is reclassification, n
   - **Held on:** `M1-08`. Reopens the moment a binary is built —
     `TestTheProofThatIsStillOwed` fails as soon as an executable appears anywhere it looks, so
     this cannot be forgotten rather than finished.
+  - **Done, and it earned every word of the paragraph above.** `v0.1.0` built four platform
+    binaries, removed the runner's toolchain and refused to proceed until `cargo`, `rustc` and
+    `rustup` were all absent, then called the shipped binary from the dependency-free Node
+    project and re-ran the conformance suite against it. It held 7 of 16 clauses on the first
+    attempt. **Three real violations, all the binary's:** the format flag was spelled `--json`
+    against ADR-013 §3's `--format json`; root discovery walked up for `aios/config.yml`
+    rather than `.git`, so a directory carrying a config outside any repository was accepted
+    as a root — the guess §4 spends a paragraph forbidding; and `AIOS_ROOT`, `--config` and
+    `AIOS_CONFIG` appeared in §4 and nowhere in `src/`.
+  - **Two of the sixteen clauses could not be met by any real subject, and that was the
+    suite's fault.** A project was marked failing by an empty file named `BROKEN`, and the
+    stream-role clause looked for a literal `working...` — both conventions invented by the
+    stand-ins the suite had only ever judged. The fixture now fails for a reason the template
+    defines, and the clause is asserted as "stdout parses, stderr is not silent".
+  - **The harness invoked the executable bare and the binary calls that a usage error**, on
+    the recorded ground that a tool exiting zero when told nothing teaches a script that
+    calling it wrong is fine. Both readings were defensible, so neither side won: `aios
+    validate` exists now, which is the only question a caller outside this ecosystem has,
+    answered through the three exit codes.
+  - **`Q-001` has its number.** Committed artifacts would be 354 KB on Windows, 582 KB for
+    Linux musl, 437 and 450 KB for the two macOS targets. The release publishes a SHA-256
+    beside each, and the fetch was exercised end to end: the Windows binary was downloaded to
+    the development machine and its checksum matched.
 
 ---
 
