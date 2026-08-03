@@ -264,6 +264,20 @@ class TestTaskSchema(ValidatorCase):
     def test_line_cap_enforced(self) -> None:
         self.assertRejects(*self.check(GOOD_TASK, "T-950a.md", "--cap", "5"), "cap is 5")
 
+    def test_the_machine_written_record_does_not_spend_the_cap(self) -> None:
+        """The cap bounds what a person writes. `aios done` appends two lines per verify
+        command at the moment the work finishes, and the only way to make room for them is to
+        delete prose from a task nobody is editing — which is what the first task retired
+        through the loop actually hit, one line over, in CI and not locally."""
+        record = ("verified:\n  sha: " + "a" * 40 + "\n  at: 2026-08-03\n  commands:\n"
+                  '    - command: "python3 -c \\"pass\\""\n      exit: 0\n')
+        text = GOOD_TASK.replace("---\n\n## Context", record + "---\n\n## Context")
+        cap = len(GOOD_TASK.splitlines())
+        code, out = self.check(text, "T-950a.md", "--cap", str(cap))
+        self.assertEqual(code, PASS, out)
+        self.assertRejects(*self.check(text, "T-950a.md", "--cap", str(cap - 1)),
+                           f"cap is {cap - 1}")
+
     def test_misnamed_file_is_not_silently_skipped(self) -> None:
         """The bug this was written for: globbing T-*.md made a misnamed file invisible."""
         self.assertRejects(*self.check(GOOD_TASK, "TASK-1.md"), "filename is not a task ID")

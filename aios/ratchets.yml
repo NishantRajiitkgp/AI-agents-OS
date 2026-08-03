@@ -108,27 +108,21 @@ ratchets:
   - id: tests_declared
     title: Test functions declared under tests/
     direction: higher_is_better
-    baseline: 784
-    raised:
-      from: 785
-      reason: >-
-        One test, and it was written to be deleted on exactly this condition. The tripwire in
-        tests/test_invocation_contract.py asserted that no built executable existed anywhere it
-        looked, so that the day one appeared the suite would go red and its failure message
-        would say what was then owed — point the contract checks at the real subject and run
-        the cross-ecosystem proof. That was the honest shape while M1-08 was held, because a
-        skipped test is invisible in a green run. v0.1.0 built four platform binaries, deleted
-        the runner's toolchain and confirmed its absence, then called the shipped binary from a
-        dependency-free Node project and re-ran the suite against it; three real contract
-        violations came out of that run. What the deletion buys is a suite that no longer
-        asserts the opposite of what is true. Nothing replaced it, deliberately: what it held
-        open is finished rather than pending, and a test added to keep this number flat would
-        be a test written for the counter.
+    baseline: 785
     note: >-
       Counted from source rather than from a run, so skipping a test does not move it — that
       is the test-integrity audit's job, and these are deliberately different failures. The
       audit reads a diff and can only see what a pull request contains; this reads the tree
       and notices a suite that shrank by any route.
+
+      History, because the number returning to where it started hides the fact that it moved.
+      It was loosened 785 → 784 for one test written to be deleted on exactly the condition
+      that deleted it: a tripwire asserting no built executable existed anywhere it looked, so
+      that the day one appeared the suite would go red and say what was then owed. v0.1.0 paid
+      that off, and nothing replaced the test, deliberately — one added to keep the number flat
+      would be a test written for the counter. It is back at 785 because the line cap and the
+      verification record met in CI and the check that reconciles them needed a test of its
+      own, which is a different test for a different reason.
 
 # Metrics the design names that cannot be measured here yet. Each says which task wires it,
 # because the difference between "cannot be measured yet" and "nobody got round to it" is

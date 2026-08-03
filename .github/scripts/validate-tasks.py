@@ -57,6 +57,31 @@ LIST_FIELDS = ("satisfies", "touches", "acceptance", "verify", "blocked_by", "co
 violations: list[str] = []
 
 
+def record_lines(path: Path) -> int:
+    """Lines the `verified:` block occupies — written by `aios done`, never by hand.
+
+    They do not count against the cap. The cap exists to bound what a person has to read and
+    keep in their head, and its message tells an author to split the task or move context
+    into a requirement. Neither is available here: the block is two lines plus two per verify
+    command, it is appended at the moment the work finishes, and the only way to make room
+    for it is to delete prose from a task nobody is editing any more. A task with six verify
+    commands would silently owe a quarter of its budget to a file it does not control.
+    """
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        return 0
+    end = text.find("\n---", 4)
+    count = 0
+    for line in text[4:end if end != -1 else len(text)].splitlines():
+        if not count:
+            count = 1 if line.startswith("verified:") else 0
+        elif line[:1].isspace() or not line.strip():
+            count += 1
+        else:
+            break
+    return count
+
+
 def check(task: dict, cap: int) -> None:
     path, data = task["path"], task["data"]
     where = relative(path)
@@ -66,9 +91,10 @@ def check(task: dict, cap: int) -> None:
             f"{where}: filename is not a task ID. Everything under tasks/ is a task file; "
             f"notes and scratch belong elsewhere.")
 
-    if task["lines"] > cap:
+    written = task["lines"] - record_lines(path)
+    if written > cap:
         violations.append(
-            f"{where}: {task['lines']} lines, cap is {cap}. A task needing more than that is "
+            f"{where}: {written} lines, cap is {cap}. A task needing more than that is "
             f"two tasks, or its context belongs in a requirement or an ADR.")
 
     if task["error"]:
