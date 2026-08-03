@@ -95,7 +95,7 @@ ratchets:
   - id: gates_registered
     title: Checks registered in aios/gates.yml
     direction: higher_is_better
-    baseline: 56
+    baseline: 57
     note: >-
       Deleting a check is the quietest way to stop it failing, and every other control here
       assumes the checks still exist. The gate registry proves each check declares a class; it
@@ -104,7 +104,22 @@ ratchets:
   - id: tests_declared
     title: Test functions declared under tests/
     direction: higher_is_better
-    baseline: 785
+    baseline: 784
+    raised:
+      from: 785
+      reason: >-
+        One test, and it was written to be deleted on exactly this condition. The tripwire in
+        tests/test_invocation_contract.py asserted that no built executable existed anywhere it
+        looked, so that the day one appeared the suite would go red and its failure message
+        would say what was then owed — point the contract checks at the real subject and run
+        the cross-ecosystem proof. That was the honest shape while M1-08 was held, because a
+        skipped test is invisible in a green run. v0.1.0 built four platform binaries, deleted
+        the runner's toolchain and confirmed its absence, then called the shipped binary from a
+        dependency-free Node project and re-ran the suite against it; three real contract
+        violations came out of that run. What the deletion buys is a suite that no longer
+        asserts the opposite of what is true. Nothing replaced it, deliberately: what it held
+        open is finished rather than pending, and a test added to keep this number flat would
+        be a test written for the counter.
     note: >-
       Counted from source rather than from a run, so skipping a test does not move it — that
       is the test-integrity audit's job, and these are deliberately different failures. The
