@@ -110,6 +110,15 @@ jobs:
       - name: Every protected path has a named owner
         run: python3 .github/scripts/check-codeowners.py
 
+      # The step above checks the file; this checks whether the forge consults it. The token is
+      # the read-only one Actions mints per run, and it is what lets this compare every setting
+      # rather than only protected-versus-not.
+      # docs/design/07-security-and-agent-containment.md#2-containment
+      - name: The default branch enforces the declared protection
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/check-branch-protection.py
+
       - name: The tool deny lists match the configuration
         run: python3 .github/scripts/generate-deny-lists.py
 

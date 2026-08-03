@@ -319,7 +319,81 @@ keys:
     effect: >-
       Paths outside the agent's write scope, and the source CODEOWNERS is generated from. The
       grader lives outside the graded party's write scope or the gate layer is advisory.
-    pending: M2-01
+    enforced_by: 'hygiene.yml step "Every protected path has a named owner"'
+
+  branch_protection.branch:
+    type: string
+    pattern: '^[A-Za-z0-9._/-]+$'
+    effect: >-
+      Which branch the settings below are asserted about. Named rather than assumed, because
+      "the default branch" is itself a forge setting and a check that followed it would stop
+      noticing the day someone repointed it.
+    enforced_by: 'hygiene.yml step "The default branch enforces the declared protection"'
+
+  branch_protection.required_reviews:
+    type: integer
+    min: 1
+    effect: >-
+      Approvals a pull request needs before it can merge. One, in a repository with one
+      maintainer, which buys a diff that somebody looked at rather than a second opinion.
+      Minimum 1 because zero is not a weaker setting, it is the absence of this control.
+    enforced_by: 'hygiene.yml step "The default branch enforces the declared protection"'
+
+  branch_protection.require_code_owner_review:
+    type: boolean
+    effect: >-
+      Requires review from the owners .github/CODEOWNERS names. This is the switch that makes
+      that file mean anything: without it the forge does not consult it, and every path in
+      protected_paths is refused locally and accepted on the branch.
+    enforced_by: 'hygiene.yml step "The default branch enforces the declared protection"'
+
+  branch_protection.dismiss_stale_reviews:
+    type: boolean
+    effect: >-
+      Drops approvals when new commits are pushed. An approval is of a diff, not of a branch;
+      without this, approve-then-push is a merge nobody reviewed, and it leaves an approval
+      record saying otherwise.
+    enforced_by: 'hygiene.yml step "The default branch enforces the declared protection"'
+
+  branch_protection.require_status_checks:
+    type: boolean
+    effect: >-
+      Whether the gates must pass before a merge is available. Every Contract gate in
+      aios/gates.yml is advisory while this is off — they still run, they still go red, and
+      nothing stops the merge.
+    enforced_by: 'hygiene.yml step "The default branch enforces the declared protection"'
+
+  branch_protection.require_branches_up_to_date:
+    type: boolean
+    effect: >-
+      Requires the branch to carry the base's head before merging. The one setting here that
+      catches semantic conflict: two branches that each pass alone can fail together, and
+      nothing else in this repository would see it before the merge.
+    enforced_by: 'hygiene.yml step "The default branch enforces the declared protection"'
+
+  branch_protection.allow_force_pushes:
+    type: boolean
+    effect: >-
+      False. History is what every verification record points at, so a force push rewrites
+      what a record was verified against while leaving the record looking valid — the one
+      failure this repository's state model cannot detect after the fact.
+    enforced_by: 'hygiene.yml step "The default branch enforces the declared protection"'
+
+  branch_protection.allow_deletions:
+    type: boolean
+    effect: >-
+      False. Deleting the branch is the coarsest form of the same loss.
+    enforced_by: 'hygiene.yml step "The default branch enforces the declared protection"'
+
+  branch_protection.enforce_admins:
+    type: boolean
+    effect: >-
+      Whether the rules bind administrators too. False here, deliberately: in a one-person
+      repository, locking the administrator out of the default branch does not add a reviewer.
+      What this configuration achieves is that the unreviewed path is visible and deliberate
+      rather than default, which is worth having and is less than it sounds like. Turn this on
+      when a second person can approve, in the same commit as the setting.
+    enforced_by: 'hygiene.yml step "The default branch enforces the declared protection"'
 
   mcp_servers:
     type: list

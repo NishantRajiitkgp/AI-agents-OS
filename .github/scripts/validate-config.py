@@ -90,6 +90,13 @@ def check_value(name: str, value, rule: dict) -> None:
         if low is not None and value < low:
             fail(f"{name}: {value} is below the minimum of {low}")
 
+    elif declared == "boolean":
+        # Strictly, not by truthiness. YAML reads `yes`, `on` and `1` as things that look true
+        # at a glance, and a switch whose configured value is the *string* "on" is exactly the
+        # silently-inert control this file exists to refuse.
+        if not isinstance(value, bool):
+            fail(f"{name}: expected true or false, got {type(value).__name__}")
+
     elif declared == "string":
         if not isinstance(value, str):
             fail(f"{name}: expected a string, got {type(value).__name__}")

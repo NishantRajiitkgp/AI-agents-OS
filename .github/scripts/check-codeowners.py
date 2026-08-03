@@ -13,8 +13,11 @@ It also fails while the placeholder owner is present. GitHub does not error on a
 owner; it drops the rule and reports the file as valid. A CODEOWNERS naming nobody is the
 worst state of the three, because it looks exactly like one naming somebody.
 
-None of this makes the file enforced. That is a branch protection setting (M2-02), which lives
-on the forge and cannot be asserted from here — which is why this prints what it cannot check.
+None of this makes the file enforced. That is a branch protection setting, which lives on the
+forge — and this said for a while that it therefore could not be checked from here, which was
+wrong. It is checked, by check-branch-protection.py, against the state `branch_protection` in
+aios/config.yml declares. The two questions stay in two scripts because they fail for
+unrelated reasons and a single red step would not say which.
 """
 
 from __future__ import annotations
@@ -108,8 +111,8 @@ def main() -> int:
         return FAILED
 
     print(f"{len(parsed)} rule(s), covering every entry in protected_paths.\n"
-          f"Not checked from here, and not checkable from here: whether the branch requires "
-          f"code-owner review. Until that setting is on (M2-02) this file changes nothing.")
+          f"Not checked here: whether the branch requires code-owner review, which is the "
+          f"setting that makes this file mean anything. That is check-branch-protection.py.")
     return PASS
 
 

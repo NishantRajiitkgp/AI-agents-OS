@@ -312,3 +312,19 @@ protected_paths:
 # Allowlisted MCP servers, each pinned to a version. Empty: none is configured, and no server
 # with write access to a production system belongs in a development profile.
 mcp_servers: []
+
+# What the default branch must enforce. These settings live on the forge, not in the
+# repository, so this is a declaration of the intended state and a check compares the two.
+# Written down because a setting that exists only as the current state of a web form has no
+# before, no reason and no author: it can be turned off in one click by someone who does not
+# know why it was on, and nothing anywhere would say it had been.
+branch_protection:
+  branch: main
+  required_reviews: 1
+  require_code_owner_review: true
+  dismiss_stale_reviews: true
+  require_status_checks: true
+  require_branches_up_to_date: true
+  allow_force_pushes: false
+  allow_deletions: false
+  enforce_admins: false

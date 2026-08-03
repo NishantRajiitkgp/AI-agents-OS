@@ -498,13 +498,35 @@ gates:
     workflow: hygiene.yml
     step: Every protected path has a named owner
     note: >-
-      Contract at every tier, and the only gate in this file whose subject is a control rather
-      than the code. It checks that CODEOWNERS covers `protected_paths` and names a resolvable
-      owner; it cannot check that the branch requires code-owner review, which is the setting
-      that makes any of it true and which lives on the forge (M2-02). The placeholder clause
-      is the load-bearing half: GitHub drops an owner it cannot resolve and still reports the
-      file as valid, so the failure this prevents is a CODEOWNERS that protects nothing while
-      being indistinguishable from one that does.
+      Contract at every tier, and one of two gates in this file whose subject is a control
+      rather than the code. It checks that CODEOWNERS covers `protected_paths` and names a
+      resolvable owner. Whether the branch consults the file at all is the gate below, which
+      was written after this one said the question could not be answered from here. The
+      placeholder clause is the load-bearing half: GitHub drops an owner it cannot resolve and
+      still reports the file as valid, so the failure this prevents is a CODEOWNERS that
+      protects nothing while being indistinguishable from one that does.
+
+  - id: security.branch_protection
+    title: The default branch enforces the declared protection
+    class: contract
+    blocking: step
+    workflow: hygiene.yml
+    step: The default branch enforces the declared protection
+    note: >-
+      Contract at every tier, and the only gate whose subject is not in the repository. The
+      settings live on the forge, `branch_protection` in aios/config.yml declares what they
+      must be, and this reads the first and compares it to the second. Both directions are a
+      failure and they need different fixes: the branch drifted from what was decided, or the
+      decision changed and nobody wrote it down.
+
+      This is the layer everything else is convenience relative to (GUARD-2), so the gate that
+      watches it cannot be the honour system. What makes it checkable without a credential is
+      that a repository's `protected` flag is public; the per-setting detail needs a token, and
+      the script reports which of the two it did rather than implying the stronger one.
+
+      An unreachable API exits could-not-run, not fail. A network gate that calls a flaky
+      lookup a violation teaches people to re-run it until it passes, and then it is not a
+      gate. That is the same distinction ADR-013 §2 spends its length on.
 
   - id: security.deny_list_generated
     title: The tool deny lists match the configuration

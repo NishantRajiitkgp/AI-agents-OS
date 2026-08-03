@@ -43,6 +43,7 @@ def load(path: Path, name: str):
 generator = load(SCRIPTS / "generate-deny-lists.py", "generate_deny_lists")
 codeowners = load(SCRIPTS / "check-codeowners.py", "check_codeowners")
 trailer = load(SCRIPTS / "check-human-trailer.py", "check_human_trailer")
+protection = load(SCRIPTS / "check-branch-protection.py", "check_branch_protection")
 
 # Imported, not loaded by path. Loading it by path builds a second module object with its own
 # CouldNotRun class, and `assertRaises` against that one never matches the exception the
@@ -274,6 +275,79 @@ class TestTheLayersDisagreeInAKnownDirection(unittest.TestCase):
                     self.assertIn(head.lower().replace("-", ""),
                                   regex.lower().replace("\\s+", "").replace("-", ""),
                                   f"{prefix!r} names a command {regex!r} does not")
+
+
+class TestBranchProtection(unittest.TestCase):
+    """M2-02. The only layer here that the party it constrains cannot remove.
+
+    Every test drives `compare` directly rather than the API. The network half is exercised by
+    the gate running in CI against the real branch, and mocking a forge here would test the
+    mock — but the comparison is where a wrong answer is dangerous, because a check that reads
+    a protected branch and says nothing is indistinguishable from one that works.
+    """
+
+    ENFORCED = {
+        "required_pull_request_reviews": {
+            "required_approving_review_count": 1,
+            "require_code_owner_reviews": True,
+            "dismiss_stale_reviews": True,
+        },
+        "required_status_checks": {"strict": True, "contexts": ["build"]},
+        "allow_force_pushes": {"enabled": False},
+        "allow_deletions": {"enabled": False},
+        "enforce_admins": {"enabled": False},
+    }
+
+    def setUp(self):
+        sys.path.insert(0, str(SCRIPTS))
+        from aios_state import load_config
+        self.want = load_config()["branch_protection"]
+
+    def test_the_declared_state_is_the_state_this_repository_asks_for(self):
+        self.assertEqual(protection.compare(self.want, self.ENFORCED), [])
+
+    def test_code_owner_review_off_is_reported(self):
+        """The single setting that makes CODEOWNERS mean anything, and the one whose absence
+        leaves every other layer looking exactly as it does when it is on."""
+        actual = json.loads(json.dumps(self.ENFORCED))
+        actual["required_pull_request_reviews"]["require_code_owner_reviews"] = False
+        problems = protection.compare(self.want, actual)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("require_code_owner_review", problems[0])
+
+    def test_no_reviews_at_all_is_reported(self):
+        actual = json.loads(json.dumps(self.ENFORCED))
+        del actual["required_pull_request_reviews"]
+        problems = "\n".join(protection.compare(self.want, actual))
+        self.assertIn("required_reviews", problems)
+        self.assertIn("require_code_owner_review", problems)
+
+    def test_force_pushes_allowed_is_reported(self):
+        """History is what every verification record points at. A force push rewrites what a
+        record was verified against and leaves the record looking valid."""
+        actual = json.loads(json.dumps(self.ENFORCED))
+        actual["allow_force_pushes"] = {"enabled": True}
+        self.assertIn("allow_force_pushes", "\n".join(protection.compare(self.want, actual)))
+
+    def test_a_stricter_branch_is_still_a_disagreement(self):
+        """Not a bug. Stricter than declared means the declaration is out of date, and the
+        record of what was decided is the artifact this gate exists to keep true."""
+        actual = json.loads(json.dumps(self.ENFORCED))
+        actual["enforce_admins"] = {"enabled": True}
+        self.assertIn("enforce_admins", "\n".join(protection.compare(self.want, actual)))
+
+    def test_the_slug_is_read_rather_than_written_down(self):
+        """A hard-coded owner/repo is right in one repository and silently wrong in every fork,
+        and this check's whole answer is about which branch on which forge."""
+        os.environ["GITHUB_REPOSITORY"] = "someone/else"
+        try:
+            self.assertEqual(protection.slug(), "someone/else")
+        finally:
+            del os.environ["GITHUB_REPOSITORY"]
+        self.assertNotIn("NishantRajiitkgp", protection.REMOTE.pattern)
+
+    def test_the_runbook_the_failure_points_at_exists(self):
+        self.assertTrue((ROOT / "docs" / "runbooks" / "branch-protection.md").is_file())
 
 
 if __name__ == "__main__":

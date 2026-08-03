@@ -99,7 +99,7 @@ ratchets:
   - id: gates_registered
     title: Checks registered in aios/gates.yml
     direction: higher_is_better
-    baseline: 57
+    baseline: 58
     note: >-
       Deleting a check is the quietest way to stop it failing, and every other control here
       assumes the checks still exist. The gate registry proves each check declares a class; it
@@ -108,7 +108,7 @@ ratchets:
   - id: tests_declared
     title: Test functions declared under tests/
     direction: higher_is_better
-    baseline: 785
+    baseline: 792
     note: >-
       Counted from source rather than from a run, so skipping a test does not move it — that
       is the test-integrity audit's job, and these are deliberately different failures. The
