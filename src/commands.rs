@@ -1155,7 +1155,11 @@ mod tests {
         }
 
         fn task(&self, id: &str, status: &str, extra: &str) -> PathBuf {
-            let path = self.root.join("aios").join("tasks").join(format!("{id}.md"));
+            let path = self
+                .root
+                .join("aios")
+                .join("tasks")
+                .join(format!("{id}.md"));
             fs::write(
                 &path,
                 format!(
@@ -1237,7 +1241,11 @@ mod tests {
         fixture.commit();
 
         assert_eq!(done(&fixture.root, "T-cccc").unwrap(), FAILED);
-        assert!(fs::read_to_string(&path).unwrap().contains("status: review"));
+        assert!(
+            fs::read_to_string(&path)
+                .unwrap()
+                .contains("status: review")
+        );
     }
 
     #[test]

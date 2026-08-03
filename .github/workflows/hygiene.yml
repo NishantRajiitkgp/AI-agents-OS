@@ -162,8 +162,14 @@ jobs:
       - name: Slash commands are one invocation and live in one place
         run: python3 .github/scripts/check-commands.py
 
+      # Through the reporter: this step is the one whose failure is a stack trace rather than
+      # a sentence, and job logs are served only to administrators. A suite that fails here
+      # and nowhere else — as it did once, passing 817 tests on Windows and failing on Linux —
+      # is unreadable to anyone who cannot open the log.
       - name: Validators reject what they claim to reject
-        run: python3 -m unittest discover -s tests
+        run: >-
+          python3 .github/scripts/report-diagnostics.py --title "unittest" --
+          python3 -m unittest discover -s tests
 
       # Root files are the most expensive real estate in the repository: everything scans
       # them, humans and agents alike. The cap exists to prevent the observed drift toward
