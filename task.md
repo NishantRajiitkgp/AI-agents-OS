@@ -537,7 +537,7 @@ checks, tiers. Gates on top of unreliable state are decoration.
   - **Verified in CI.** Eight selector tests pass, `the_answer_does_not_depend_on_input_order`
     among them. The rotation-rather-than-shuffle departure recorded above is unchanged.
 
-- [~] **M1-11** Implement the refusal conditions on `aios next`
+- [x] **M1-11** Implement the refusal conditions on `aios next`
   - Refuses to return anything when backlog validation fails or when an incident is open with
     `blocks_work: true`. The review-debt refusal lands at `M5-09`; leave a single call site.
   - Refusing is correct behaviour — an agent should be stopped by a broken plan, not routed
@@ -549,10 +549,10 @@ checks, tiers. Gates on top of unreliable state are decoration.
     refusing is the intended behaviour rather than a bug to route around.
   - The review-debt refusal from M5-09 has its single call site marked in `next()` and nothing
     else, as this task asked.
-  - **Written, still not verified.** Both refusals are implemented, and CI runs `aios next`
-    inside this repository without it reporting could-not-run. But no test builds an invalid
-    backlog, or an incident with `blocks_work: true`, and asserts that it refuses. What is
-    proven is the path where nothing is wrong, which is not the path this task is about.
+  - **Verified in CI.** Three tests over throwaway repositories: a `blocked_by` naming no task
+    refuses, an incident declaring `blocks_work: true` refuses, and a backlog with neither
+    returns work. The third is the control, and it is the reason the other two mean anything —
+    without it both would be satisfied by a `next` that failed on every fixture it was handed.
 
 - [x] **M1-12** `aios start` / `aios submit` — state transitions
   - Six states, no more: `todo → doing → review → done`, plus `waiting` (external blockers
@@ -575,7 +575,7 @@ checks, tiers. Gates on top of unreliable state are decoration.
   - **Verified in CI.** Five transition tests pass, `every_state_pair_is_decided_one_way_or_
     the_other` among them, which walks all thirty-six pairs and asserts none falls through.
 
-- [~] **M1-13** `aios done` and the verification record — **the mechanism everything hangs on**
+- [x] **M1-13** `aios done` and the verification record — **the mechanism everything hangs on**
   - Runs every command in `verify`, refuses if any exits non-zero, then writes a record into
     the task file: commit SHA, command list, exit codes, timestamp.
   - **Done when:** a task with a failing `verify` cannot reach `done` through the CLI by any
@@ -588,12 +588,16 @@ checks, tiers. Gates on top of unreliable state are decoration.
   - The record written afterwards names the commit SHA, each command, and its exit code. It is
     evidence, not an assertion: its only value is that CI can re-run those commands at that
     SHA and disagree (M1-15).
-  - **Written, still not verified — and this is the one that matters most.** The record's
-    mechanics are covered (`a_record_is_added_before_the_closing_marker` and both
-    `strip_field` tests), but nothing asserts the Done-when itself: that a task with a failing
-    `verify` cannot reach `done`. That currently rests on `--force` not existing, and an
-    absence is precisely what a later edit restores without anyone noticing. It needs a test
-    that runs `done` against a failing verify and asserts the task is still in `review`.
+  - **Verified in CI.** A failing `verify` leaves the task in `review` and writes no record.
+    One failure among three commands is enough, so reading only the last exit code — the
+    obvious wrong way to write that loop — does not pass. And a passing `verify` does move the
+    task and does write the record, which is the control that stops a `done` refusing
+    everything from looking like a `done` that works.
+  - **The absence is what needed the test.** No argument reaches `done` past a failing verify
+    because no such argument exists, and an absence is precisely what a later edit restores
+    without anyone noticing. So the test asserts the dispatcher's flag set is exactly `--json`
+    and `--list`: adding a third fails the build instead of passing quietly. It reads the
+    dispatcher with the test module cut off first, or it would be reading itself.
 
 - [x] **M1-14** `aios list` and `aios check`
   - `backlog` / `in progress` / `completed` are **queries, not files** — an aggregate status
