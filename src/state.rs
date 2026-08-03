@@ -537,7 +537,11 @@ mod tests {
         fs::create_dir_all(&deep).unwrap();
         fs::create_dir_all(repository.join(".git")).unwrap();
 
-        assert_eq!(find_root(&deep).unwrap(), repository, "walks upward for .git");
+        assert_eq!(
+            find_root(&deep).unwrap(),
+            repository,
+            "walks upward for .git"
+        );
 
         let decoy = base.join("decoy");
         fs::create_dir_all(decoy.join("aios")).unwrap();
@@ -545,7 +549,9 @@ mod tests {
         // Stated as "the decoy is not the answer" rather than "there is no answer", because
         // the temporary directory's own ancestors are not this test's to know about.
         assert!(
-            find_root(&decoy).map(|found| found != decoy).unwrap_or(true),
+            find_root(&decoy)
+                .map(|found| found != decoy)
+                .unwrap_or(true),
             "a config outside any repository is not a root, it is a guess"
         );
 
