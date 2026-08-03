@@ -466,32 +466,25 @@ class TestTheHostProjectHarness(unittest.TestCase):
         self.assertFalse((ROOT / "tests" / "host-project" / "node_modules").exists())
 
 
-class TestTheProofThatIsStillOwed(unittest.TestCase):
-    """A tripwire, not a placeholder.
+class TestTheContractAtTheSourceLevel(unittest.TestCase):
+    """What can be checked by reading the crate rather than by running a subject.
 
-    The end-to-end proof Q-002 demands needs a real binary, and M1-08 is held because the Rust
-    toolchain is unreachable from this network. The honest options were a skipped test or
-    nothing, and both are forgettable — a skip is invisible in a green run, and the
-    test-integrity audit would flag one anyway.
+    This class held a tripwire until the proof it demanded ran. While M1-08 was blocked on an
+    unreachable toolchain, it asserted that no executable existed anywhere it looked, so that
+    the day one appeared the suite would fail and say what was owed: point these checks at the
+    real subject and run the cross-ecosystem proof. A skipped test would have been invisible
+    in a green run, which for the one check proving the OS imposes no runtime was the worst
+    place in the repository to put something forgettable.
 
-    So this asserts the *blocked* state instead. The moment a built executable appears, this
-    test fails and says what is now owed. It cannot be satisfied by waiting.
+    The v0.1.0 release ran it. Four platform binaries, the runner's toolchain deleted and its
+    absence confirmed before anything was proven, then the shipped binary called from a
+    dependency-free Node project and judged by this suite. It found three real violations
+    doing so — the format flag was spelled `--json` against the ADR's `--format json`, root
+    discovery keyed on the config rather than on `.git`, and neither environment override
+    existed — which is what the tripwire was for.
+
+    Kept the checks that do not depend on the binary being absent.
     """
-
-    def candidates(self) -> list[Path]:
-        binaries = ROOT / "aios" / "bin"
-        return [path for path in (binaries / "aios", binaries / "aios.exe",
-                                  ROOT / "target" / "release" / "aios",
-                                  ROOT / "target" / "release" / "aios.exe")
-                if path.is_file()]
-
-    def test_when_a_binary_exists_the_conformance_run_is_owed(self) -> None:
-        found = self.candidates()
-        self.assertEqual(
-            found, [],
-            f"An executable now exists at {found}. The contract checks above have only ever "
-            f"run against stand-ins. Point them at this one and run the cross-ecosystem proof "
-            f"M3-11 asks for, then delete this test.")
 
     def test_the_contract_is_written_down(self) -> None:
         """Q-002 requires the contract to precede the test rather than describe it."""

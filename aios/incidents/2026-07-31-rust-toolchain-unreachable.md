@@ -5,7 +5,7 @@ detected_by: >-
 no_control_because: >-
   the block is network policy outside this repository's reach. The recorded route is to wait
   for CI rather than work around it, and each workaround was measured and is worse
-blocks_work: true
+blocks_work: false
 ---
 
 # 2026-07-31 — The chosen ecosystem cannot be installed on the development machine
@@ -92,6 +92,31 @@ This does not become a CI gate. CI runs on GitHub's network, where the answer is
 a gate there would assert something true in the only place it cannot fail. It belongs in the
 ADR template as a required row, which is a documentation control, and the honest note is that
 documentation controls are weaker than gates.
+
+## 2026-08-03 — `blocks_work` set to false, and one measurement above is now wrong
+
+Appended rather than edited, because the record of what was believed is the point of keeping
+these. Nothing above has been changed except the frontmatter flag, and this section says why.
+
+**The claim that no published binary can be fetched here is false as of today.** The release
+built at `v0.1.0` was downloaded to this machine over
+`github.com/.../releases/download/`, 354,304 bytes, and its SHA-256 matches the checksum
+published beside it. The binary then ran: `aios --version`, `aios validate`, `aios list`, and
+`aios next` — which is what produced this edit, by refusing to hand out work while this
+incident was open.
+
+Whether the earlier measurement was wrong or the network policy changed is not knowable from
+here, and guessing between them would be inventing the more flattering one. What is knowable
+is that the route works today and was checked rather than assumed.
+
+**What this does not change.** The toolchain is still unreachable: nothing here was compiled
+locally, and CI remains the only compiler. ADR-005 is untouched, and so is the control this
+incident produced. What has gone is the consequence — `M1-08` through `M1-18` were held
+because no binary could exist on this machine, and one now does, checksum-verified, built by
+the only compiler that can reach the ecosystem.
+
+`blocks_work` is therefore false. The incident stays open, because the condition it names is
+still true and its control is still owed a row in the ADR template.
 
 ## What this does not fix
 
