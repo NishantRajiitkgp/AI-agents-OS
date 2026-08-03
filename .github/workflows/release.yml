@@ -132,18 +132,26 @@ jobs:
           done
           echo "cargo, rustc and rustup are absent from this machine."
 
+      # Both proofs report through report-diagnostics.py. These are the two steps in the
+      # repository whose output a person most needs and is least able to get: they run only on
+      # a tag, so there is no rerunning them locally, and the job log takes an administrator.
+      # The first run that reached here failed with nothing to read but an exit code.
       - name: Prove the invocation contract from another ecosystem
         run: |
           set -euo pipefail
           chmod +x dist/aios-x86_64-unknown-linux-musl
           # Not `npm install`. The host project has no dependencies, on purpose.
-          node tests/host-project/check.mjs \
-            "$PWD/dist/aios-x86_64-unknown-linux-musl" | tee "$GITHUB_STEP_SUMMARY"
+          python3 .github/scripts/report-diagnostics.py --title "host project" -- \
+            node tests/host-project/check.mjs \
+              "$PWD/dist/aios-x86_64-unknown-linux-musl" | tee "$GITHUB_STEP_SUMMARY"
 
       - name: Run the conformance suite against the shipped binary
         env:
           AIOS_BINARY: ${{ github.workspace }}/dist/aios-x86_64-unknown-linux-musl
-        run: python3 -m unittest tests.test_invocation_contract
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/report-diagnostics.py --title "conformance suite" -- \
+            python3 -m unittest tests.test_invocation_contract
 
   publish:
     needs: prove-runtime-free

@@ -78,7 +78,7 @@ fn print_help() {
     println!("        `blocked` is not a state — it is read from blocked_by.");
     println!();
     println!("  --root PATH  use this repository root instead of discovering one");
-    println!("  --json       machine-readable output, where a subcommand offers it");
+    println!("  --format F   json, or human when omitted, where a subcommand offers both");
     println!("  --list       for `check`: name the steps instead of running them");
     println!("  --version    print the version");
     println!("  --help       print this message");
@@ -86,9 +86,9 @@ fn print_help() {
     println!("Exit: 0 passed, 1 failed, 2 could not run.");
 }
 
-/// Pull `--root PATH` out of the arguments, leaving the rest.
-fn take_root(args: &mut Vec<String>) -> Option<String> {
-    let position = args.iter().position(|a| a == "--root")?;
+/// Pull `--flag VALUE` out of the arguments, leaving the rest.
+fn take_option(args: &mut Vec<String>, flag: &str) -> Option<String> {
+    let position = args.iter().position(|a| a == flag)?;
     if position + 1 >= args.len() {
         return None;
     }
@@ -136,8 +136,26 @@ fn run() -> u8 {
     }
 
     args.remove(0);
-    let explicit_root = take_root(&mut args);
-    let json = take_flag(&mut args, "--json");
+    let explicit_root = take_option(&mut args, "--root");
+
+    // ADR-013 §3 names this `--format json`, and the first build to meet the conformance suite
+    // spelled it `--json`. The ADR is what a host project reads and cannot be edited to match
+    // an implementation, so the implementation moved. An unrecognised value is refused rather
+    // than quietly treated as human: a caller asking for a format this does not have wants an
+    // error, not prose it is about to try to parse.
+    let format = take_option(&mut args, "--format");
+    if args.iter().any(|a| a == "--format") {
+        eprintln!("aios {first}: --format takes a value: human or json");
+        return COULD_NOT_RUN;
+    }
+    let json = match format.as_deref() {
+        None | Some("human") => false,
+        Some("json") => true,
+        Some(other) => {
+            eprintln!("aios {first}: unknown format {other:?}; expected human or json");
+            return COULD_NOT_RUN;
+        }
+    };
 
     let root = match commands::root_from(explicit_root.as_deref()) {
         Ok(root) => root,
@@ -221,14 +239,14 @@ mod tests {
             "--root".to_string(),
             "/tmp/x".to_string(),
         ];
-        assert_eq!(take_root(&mut args), Some("/tmp/x".to_string()));
+        assert_eq!(take_option(&mut args, "--root"), Some("/tmp/x".to_string()));
         assert_eq!(args, vec!["next".to_string()]);
     }
 
     #[test]
     fn a_root_flag_with_no_value_is_not_silently_consumed() {
         let mut args = vec!["next".to_string(), "--root".to_string()];
-        assert_eq!(take_root(&mut args), None);
+        assert_eq!(take_option(&mut args, "--root"), None);
         assert_eq!(
             args.len(),
             2,
@@ -238,10 +256,28 @@ mod tests {
 
     #[test]
     fn a_flag_is_removed_once_read() {
-        let mut args = vec!["--json".to_string(), "todo".to_string()];
-        assert!(take_flag(&mut args, "--json"));
-        assert_eq!(args, vec!["todo".to_string()]);
-        assert!(!take_flag(&mut args, "--json"));
+        let mut args = vec!["--list".to_string(), "hygiene.yml".to_string()];
+        assert!(take_flag(&mut args, "--list"));
+        assert_eq!(args, vec!["hygiene.yml".to_string()]);
+        assert!(!take_flag(&mut args, "--list"));
+    }
+
+    #[test]
+    fn the_format_option_is_spelled_the_way_adr_013_spells_it() {
+        // The one clause a stand-in could satisfy while the real binary did not, because a
+        // stand-in is written from the ADR and the binary was written from memory of it.
+        let dispatcher = include_str!("main.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap_or_default();
+        assert!(
+            dispatcher.contains("take_option(&mut args, \"--format\")"),
+            "ADR-013 §3 is `--format json`, and it is not this repository's to renegotiate"
+        );
+        assert!(
+            !dispatcher.contains("\"--json\""),
+            "the old spelling is back, and the contract now has two readings"
+        );
     }
 
     #[test]

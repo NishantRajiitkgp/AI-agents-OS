@@ -1258,13 +1258,17 @@ mod tests {
         let source = include_str!("main.rs");
         let dispatcher = source.split("#[cfg(test)]").next().unwrap_or(source);
         let mut flags: Vec<&str> = Vec::new();
-        for piece in dispatcher.split("take_flag(&mut args, \"").skip(1) {
-            flags.push(&piece[..piece.find('"').expect("a flag literal is quoted")]);
+        // Both readers, not just the boolean one. `--format` arrived as an option rather than
+        // a flag, and a test that watched only `take_flag` would have let it through unread.
+        for reader in ["take_flag(&mut args, \"", "take_option(&mut args, \""] {
+            for piece in dispatcher.split(reader).skip(1) {
+                flags.push(&piece[..piece.find('"').expect("a flag literal is quoted")]);
+            }
         }
         flags.sort();
         assert_eq!(
             flags,
-            ["--json", "--list"],
+            ["--format", "--list", "--root"],
             "the dispatcher reads a flag it did not before. If it can reach `done` past a \
              failing verify, M1-13 has stopped being true."
         );
